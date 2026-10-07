@@ -14,6 +14,7 @@ Core:["Cable Crunch","Machine Crunch","Weighted Crunch","Hanging Knee Raise","Ha
 Forearms:["Wrist Curl","Reverse Wrist Curl","Behind Back Wrist Curl","Reverse Barbell Curl","Farmer Carry","Suitcase Carry","Plate Pinch Hold","Dead Hang"],
 "Full Body":["Barbell Clean","Power Clean","Hang Clean","Clean and Press","Push Jerk","Split Jerk","Snatch","Hang Snatch","Dumbbell Clean","Dumbbell Clean and Press","Kettlebell Swing","Turkish Get Up","Thruster","Man Maker","Sled Push","Sled Drag"]
 };
+const iconFor=g=>({Chest:"🏋️",Back:"🦾",Quads:"🦵",Hamstrings:"🦵",Glutes:"🍑",Shoulders:"💪",Biceps:"💪",Triceps:"💪",Calves:"🦵",Core:"◈",Forearms:"🤝","Full Body":"🏋️"})[g]||"🏋️";
 const typeFor=n=>/dumbbell|single leg|alternating|hammer|goblet|arnold|lateral raise|front raise|preacher|concentration|zottman|kickback|tate press|turkish|man maker|thruster/i.test(n)?"dumbbell":/cable|pulldown|pushdown|extension|face pull|crossover|kickback|pallof|wood chop|cable lift|leg curl/i.test(n)?"cable":/machine|pec deck|hack squat|leg press|smith|captain|sled/i.test(n)?"machine":/push up|pull up|chin up|dip|plank|dead bug|bird dog|v up|sit up|toe touch|dragon flag|bodyweight|dead hang|nordic|glute ham|lunge|step up|calf raise/i.test(n)?"bodyweight":"barbell";
 const starter=Object.entries(groups).flatMap(([g,ns])=>ns.map(n=>[n,g,typeFor(n),iconFor(g)]));
 
