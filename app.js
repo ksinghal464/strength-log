@@ -30,6 +30,28 @@ const TYPES = {
 };
 const ICONS = { Chest: "🏋️", Back: "🦾", Quads: "🦵", Hamstrings: "🦵", Glutes: "🍑", Shoulders: "💪", Biceps: "💪", Triceps: "💪", Calves: "🦵", Core: "🎯", Forearms: "🤝", "Full Body": "🏋️" };
 const iconFor = (g) => ICONS[g] || "🏋️";
+// Representative exercise whose photo is used for custom exercises in each group.
+const GROUP_IMAGE = { Chest: "Barbell Bench Press", Back: "Barbell Row", Quads: "Barbell Back Squat", Hamstrings: "Romanian Deadlift", Glutes: "Barbell Hip Thrust", Shoulders: "Overhead Press", Biceps: "Barbell Curl", Triceps: "Triceps Pushdown", Calves: "Standing Calf Raise", Core: "Plank", Forearms: "Wrist Curl", "Full Body": "Power Clean" };
+const IMG = typeof IMAGES === "object" ? IMAGES : {};
+function imageKey(e) {
+  if (e.builtin) return IMG[e.name] || null;
+  const g = Object.keys(GROUP_IMAGE).find((k) => k.toLowerCase() === String(e.group).toLowerCase());
+  return g ? IMG[GROUP_IMAGE[g]] || null : null;
+}
+function thumbHTML(e) {
+  const k = imageKey(e);
+  return k
+    ? '<div class="thumb"><img src="img/t/' + esc(k) + '.jpg" alt="" loading="lazy" decoding="async" width="52" height="52" onerror="this.remove()"></div>'
+    : '<div class="thumb">' + esc(e.icon) + "</div>";
+}
+function heroHTML(e) {
+  const k = imageKey(e);
+  if (!k) return "";
+  return '<div class="hero" data-action="hero-toggle" title="Tap to pause">' +
+    '<img src="img/f/' + esc(k) + '-0.jpg" alt="' + esc(e.name) + ' start position" decoding="async">' +
+    '<img class="end" src="img/f/' + esc(k) + '-1.jpg" alt="' + esc(e.name) + ' end position" decoding="async">' +
+    (e.builtin ? "" : '<span class="hero-tag">' + esc(e.group) + "</span>") + "</div>";
+}
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const builtinId = (name) => "b:" + slug(name);
 
@@ -219,8 +241,8 @@ function render() {
 }
 
 function exerciseRow(e, sub) {
-  return '<button class="exercise" data-action="open" data-id="' + esc(e.id) + '"><div class="thumb">' + esc(e.icon) +
-    '</div><div class="info"><b>' + esc(e.name) + "</b><small>" + esc(sub) + "</small></div><span>›</span></button>";
+  return '<button class="exercise" data-action="open" data-id="' + esc(e.id) + '">' + thumbHTML(e) +
+    '<div class="info"><b>' + esc(e.name) + "</b><small>" + esc(sub) + "</small></div><span>›</span></button>";
 }
 
 const VIEWS = {
@@ -318,6 +340,7 @@ const VIEWS = {
       '<div class="top"><div><h2>' + esc(e.name) + '</h2><div class="muted">' + esc(e.group) + " · " + esc(e.type) +
       (e.builtin ? "" : ' · <a href="#" data-action="custom" data-id="' + esc(e.id) + '" style="color:#aaa">edit</a>') +
       '</div></div><button class="btn primary" data-action="log" data-id="' + esc(id) + '">+ Log</button></div>' +
+      heroHTML(e) +
       '<div class="note">' + esc(conv) + "</div>" +
       '<div class="stats">' +
       stat(top ? fmtW(top) : "—", "Best weight") +
@@ -432,6 +455,7 @@ const ACTIONS = {
     const prev = lastRow ? { weight: lastRow.querySelector(".wt").value, reps: lastRow.querySelector(".rp").value } : { weight: "", reps: "" };
     document.getElementById("sets").insertAdjacentHTML("beforeend", setRow(prev, n));
   },
+  "hero-toggle": (_, el) => el.classList.toggle("paused"),
   "remove-set": (_, el) => { el.closest(".set").remove(); renumberSets(); },
   "save-session": (id, el) => {
     const sets = [...document.querySelectorAll("#sets .set")]

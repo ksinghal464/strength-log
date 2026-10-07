@@ -80,3 +80,13 @@ label { display: block; color: #aaa; font-size: 12px; margin: 13px 0 6px; }
 
 .chart { width: 100%; height: auto; display: block; margin-top: 10px; background: #121212; border-radius: 10px; }
 .chart text { fill: #888; font-size: 10px; font-family: inherit; }
+
+.thumb { overflow: hidden; background: #fff; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.hero { position: relative; margin: 0 0 12px; border-radius: 14px; overflow: hidden; background: #fff; aspect-ratio: 4 / 3; cursor: pointer; }
+.hero img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.hero .end { animation: flip 2s steps(1) infinite; }
+.hero.paused .end { animation-play-state: paused; }
+@keyframes flip { 0% { opacity: 0; } 50% { opacity: 1; } }
+.hero-tag { position: absolute; left: 8px; bottom: 8px; background: rgba(0,0,0,.7); color: #fff; font-size: 11px; padding: 4px 8px; border-radius: 999px; }
+@media (prefers-reduced-motion: reduce) { .hero .end { animation: none; opacity: 0; } }

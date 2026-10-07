@@ -20,3 +20,9 @@ Use **Export backup** regularly; **Import** offers Merge or Replace.
 ## Deploy
 Push to GitHub Pages; the app is served from `/strength-log/`.
 Local: `python3 -m http.server` then open http://localhost:8000.
+
+## Exercise images
+Photos from [free-exercise-db](https://github.com/yuhonas/free-exercise-db) (The Unlicense / public domain).
+`images.js` maps each built-in exercise to an image key; `img/t/` has 120px list thumbnails, `img/f/` has 480px start/end photos.
+Custom exercises show a representative photo for their muscle group (`GROUP_IMAGE` in `app.js`).
+Images are cached by the service worker on first view (cache `strength-log-img`).
