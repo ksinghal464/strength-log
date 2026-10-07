@@ -28,4 +28,8 @@ function saveWorkout(id){let sets=[...document.querySelectorAll(".set")].map(r=>
 function backup(){let b=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="strength-log-backup.json";a.click()}
 function restore(){let i=document.createElement("input");i.type="file";i.accept=".json";i.onchange=()=>{let r=new FileReader();r.onload=()=>{try{let x=JSON.parse(r.result);if(!x.exercises||!x.sessions)throw 0;data=x;save();home()}catch(e){alert("Invalid backup.")}};r.readAsText(i.files[0])};i.click()}
 home();
-</script></body></html>
+</script>
+<script>
+if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));}
+</script>
+</body></html>
