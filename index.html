@@ -37,12 +37,31 @@ function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;",
 function save(){localStorage.setItem(KEY,JSON.stringify(data))}
 function lastFor(id){return data.sessions.filter(s=>s.exerciseId===id).sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt)[0]}
 function home(){
- const used={}; data.exercises.filter(e=>data.sessions.some(s=>s.exerciseId===e.id)).forEach(e=>(used[e.group]||(used[e.group]=[])).push(e);
- let html='<div class="top"><div><h1>Strength Log</h1><div class="muted">Log. Compare. Get stronger.</div></div><button class="btn" onclick="library()">+ Exercise</button></div>';
- if(!Object.keys(used).length) html+='<div class="card empty">No exercises logged yet.<br><br><button class="btn primary" onclick="library()">Choose an exercise</button></div>';
- else Object.keys(used).forEach(g=>{html+='<div class="section"><h3>'+esc(g)+'</h3>';used[g].forEach(e=>{const l=lastFor(e.id);const s=l&&l.sets[0];html+='<div class="exercise" onclick="openExercise(\''+e.id+'\')"><div class="thumb">'+esc(e.icon||"🏋️")+'</div><div style="flex:1"><b>'+esc(e.name)+'</b><small>'+(s?esc(s.weight)+" kg × "+esc(s.reps):esc(e.group))+'</small></div><span>›</span></div>'});html+='</div>'});
- html+='<div class="section"><div class="card"><b>Data</b><div class="muted" style="margin:5px 0 12px">Your workouts stay on this device.</div><button class="btn" onclick="backup()">Export backup</button> <button class="btn" onclick="restore()">Import backup</button></div></div>';
- app.innerHTML=html;
+  const used={};
+  data.exercises.filter(e=>data.sessions.some(s=>s.exerciseId===e.id)).forEach(e=>{
+    if(!used[e.group])used[e.group]=[];
+    used[e.group].push(e);
+  });
+  let html='<div class="top"><div><h1>Strength Log</h1><div class="muted">Log. Compare. Get stronger.</div></div><button class="btn" id="addExercise">+ Exercise</button></div>';
+  if(!Object.keys(used).length){
+    html+='<div class="card empty">No exercises logged yet.<br><br><button class="btn primary" id="chooseExercise">Choose an exercise</button></div>';
+  }else{
+    Object.keys(used).forEach(g=>{
+      html+='<div class="section"><h3>'+esc(g)+'</h3>';
+      used[g].forEach(e=>{
+        const l=lastFor(e.id), s=l&&l.sets[0];
+        html+='<div class="exercise" data-exercise="'+esc(e.id)+'"><div class="thumb">'+esc(e.icon||"🏋️")+'</div><div style="flex:1"><b>'+esc(e.name)+'</b><small>'+(s?esc(s.weight)+" kg × "+esc(s.reps):esc(e.group))+'</small></div><span>›</span></div>';
+      });
+      html+='</div>';
+    });
+  }
+  html+='<div class="section"><div class="card"><b>Data</b><div class="muted" style="margin:5px 0 12px">Your workouts stay on this device.</div><button class="btn" id="backupBtn">Export backup</button> <button class="btn" id="restoreBtn">Import backup</button></div></div>';
+  app.innerHTML=html;
+  document.getElementById("addExercise").onclick=library;
+  const choose=document.getElementById("chooseExercise"); if(choose)choose.onclick=library;
+  document.querySelectorAll("[data-exercise]").forEach(x=>x.onclick=()=>openExercise(x.dataset.exercise));
+  document.getElementById("backupBtn").onclick=backup;
+  document.getElementById("restoreBtn").onclick=restore;
 }
 function library(){
   filter="All";
