@@ -45,10 +45,15 @@ function home(){
  app.innerHTML=html;
 }
 function library(){
- let chips='<button class="chip active" onclick="setFilter(\'All\')">All</button>';
- Object.keys(groups).forEach(g=>chips+='<button class="chip" onclick="setFilter(\''+esc(g)+'\')">'+esc(g)+'</button>');
- app.innerHTML='<button class="btn back" onclick="home()">← Back</button><div class="top"><div><h2>Exercise library</h2><div class="library-count">'+data.exercises.length+' exercises · 13 muscle groups</div></div><button class="btn" onclick="customExercise()">+ Custom</button></div><div class="search"><input id="q" placeholder="Search exercises..." oninput="renderLibrary()"></div><div class="chips">'+chips+'</div><div id="lib"></div>';
- renderLibrary();
+  filter="All";
+  let chips='<button class="chip active" data-filter="All">All</button>';
+  Object.keys(groups).forEach(g=>{chips+='<button class="chip" data-filter="'+esc(g)+'">'+esc(g)+'</button>';});
+  app.innerHTML='<button class="btn back" id="backHome">← Back</button><div class="top"><div><h2>Exercise library</h2><div class="library-count">'+data.exercises.length+' exercises · 13 muscle groups</div></div><button class="btn" id="customBtn">+ Custom</button></div><div class="search"><input id="q" placeholder="Search exercises..."></div><div class="chips">'+chips+'</div><div id="lib"></div>';
+  document.getElementById("backHome").onclick=home;
+  document.getElementById("customBtn").onclick=customExercise;
+  document.querySelectorAll("[data-filter]").forEach(btn=>btn.onclick=()=>{filter=btn.dataset.filter;document.querySelectorAll("[data-filter]").forEach(x=>x.classList.toggle("active",x===btn));renderLibrary();});
+  document.getElementById("q").oninput=renderLibrary;
+  renderLibrary();
 }
 function setFilter(g){filter=g;renderLibrary()}
 function renderLibrary(){
