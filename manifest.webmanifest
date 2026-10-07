@@ -1,9 +1,14 @@
 {
   "name": "Strength Log",
   "short_name": "Strength Log",
-  "start_url": "./index.html",
+  "description": "A simple offline strength training progress tracker.",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#101010",
   "theme_color": "#101010",
-  "icons": []
+  "orientation": "portrait-primary",
+  "icons": [
+    {"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
 }
