@@ -1,97 +1,25 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101010"><link rel="manifest" href="./manifest.webmanifest"><title>Strength Log</title><style>
-*{box-sizing:border-box}body{margin:0;background:#0d0d0d;color:#f5f5f5;font-family:system-ui,-apple-system,Segoe UI,sans-serif}main{max-width:780px;margin:auto;padding:18px 15px 54px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}h1,h2,h3,p{margin:0}h1{font-size:25px}.muted{color:#929292;font-size:13px}.btn{border:1px solid #333;background:#181818;color:#fff;border-radius:10px;padding:10px 13px;font-weight:650;cursor:pointer}.primary{background:#fff;color:#111;border-color:#fff}.danger{color:#ff8b8b}.search{margin:12px 0}.search input,input,select{width:100%;background:#171717;color:#fff;border:1px solid #333;border-radius:10px;padding:12px;font-size:16px}label{display:block;color:#aaa;font-size:12px;margin:13px 0 6px}.card{background:#171717;border:1px solid #292929;border-radius:14px;padding:14px;margin:11px 0}.section{margin:22px 0}.back{margin-bottom:14px}.exercise{background:#171717;border:1px solid #292929;border-radius:12px;padding:11px;margin:8px 0;display:flex;gap:12px;align-items:center;cursor:pointer}.thumb{width:82px;height:62px;border-radius:10px;background:#222;display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none}.visual-thumb svg{width:100%;height:100%;display:block}.exercise small{display:block;color:#999;margin-top:3px}.chips{display:flex;gap:7px;overflow:auto;padding-bottom:3px}.chip{white-space:nowrap;border:1px solid #333;background:#181818;color:#ddd;border-radius:999px;padding:7px 11px}.chip.active{background:#fff;color:#111}.tabs{display:flex;gap:7px;margin:12px 0}.tabs button{flex:1}.set{display:grid;grid-template-columns:30px 1fr 1fr 30px;gap:7px;align-items:center;margin:8px 0}.set span{color:#888;text-align:center}.del{background:none;border:0;color:#888;font-size:20px}.history{width:100%;border-collapse:collapse;margin-top:9px;font-size:14px}.history th,.history td{padding:8px 5px;border-bottom:1px solid #292929;text-align:left}.session-head{display:flex;justify-content:space-between;align-items:center}.chart{width:100%;height:230px;background:#121212;border-radius:10px;margin-top:10px}.note{padding:11px;background:#191919;border-radius:9px;color:#aaa;font-size:12px;line-height:1.5}.empty{padding:24px;text-align:center;color:#888}.stats{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px}.stat{background:#121212;border-radius:10px;padding:11px}.stat b{display:block;font-size:18px}.stat span{font-size:11px;color:#888}.library-count{font-size:12px;color:#888;margin-top:3px}.visual-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}.visual-card{background:#171717;border:1px solid #292929;border-radius:13px;overflow:hidden;cursor:pointer}.visual-art{height:125px;background:#121212;display:flex;align-items:center;justify-content:center}.visual-art svg{width:100%;height:100%;max-width:180px}.visual-info{padding:10px}.visual-info b{font-size:14px}.visual-info small{display:block;color:#888;margin-top:3px}@media(min-width:650px){.visual-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}.ref-hero{display:grid;grid-template-columns:110px 1fr;gap:14px;align-items:center}.ref-art{height:110px;border-radius:14px;background:#121212;display:flex;align-items:center;justify-content:center;font-size:52px}.tag{display:inline-block;background:#242424;border:1px solid #333;border-radius:999px;padding:5px 8px;font-size:11px;color:#ccc;margin:4px 4px 0 0}.steps{padding-left:20px;color:#ccc;font-size:13px;line-height:1.55}.steps li{margin:6px 0}
-</style></head><body><main><div id="app"><div class="card"><h1>Strength Log</h1><p class="muted" style="margin-top:8px">Loading…</p></div></div></main><script>const groups={
-Chest:["Barbell Bench Press","Incline Barbell Bench Press","Decline Barbell Bench Press","Paused Bench Press","Dumbbell Bench Press","Incline Dumbbell Press","Decline Dumbbell Press","Dumbbell Fly","Incline Dumbbell Fly","Cable Fly","Low Cable Fly","High Cable Fly","Cable Crossover","Machine Chest Press","Incline Machine Press","Pec Deck","Push Up","Incline Push Up","Decline Push Up","Chest Dip"],
-Back:["Conventional Deadlift","Sumo Deadlift","Rack Pull","Deficit Deadlift","Lat Pulldown","Wide Grip Lat Pulldown","Close Grip Lat Pulldown","Neutral Grip Pulldown","Pull Up","Chin Up","Assisted Pull Up","Barbell Row","Pendlay Row","T-Bar Row","Dumbbell Row","One Arm Cable Row","Seated Cable Row","Close Grip Cable Row","Chest Supported Row","Machine Row","Meadows Row","Straight Arm Pulldown","Dumbbell Pullover","Barbell Pullover"],
-Quads:["Barbell Back Squat","High Bar Squat","Low Bar Squat","Front Squat","Pause Squat","Box Squat","Hack Squat","Leg Press","Single Leg Press","Leg Extension","Bulgarian Split Squat","Walking Lunge","Reverse Lunge","Forward Lunge","Dumbbell Lunge","Barbell Lunge","Goblet Squat","Heels Elevated Squat","Smith Machine Squat","Sissy Squat"],
-Hamstrings:["Romanian Deadlift","Stiff Leg Deadlift","Single Leg Romanian Deadlift","Good Morning","Nordic Curl","Glute Ham Raise","Lying Leg Curl","Seated Leg Curl","Standing Leg Curl","Single Leg Curl","Cable Leg Curl","Slider Leg Curl","Stability Ball Leg Curl"],
-Glutes:["Barbell Hip Thrust","Dumbbell Hip Thrust","Smith Machine Hip Thrust","Glute Bridge","Single Leg Glute Bridge","Cable Kickback","Machine Glute Kickback","45 Degree Hip Extension","Cable Pull Through","Step Up","High Step Up","Reverse Hyperextension"],
-Shoulders:["Overhead Press","Push Press","Seated Barbell Press","Seated Dumbbell Shoulder Press","Arnold Press","Dumbbell Lateral Raise","Cable Lateral Raise","Machine Lateral Raise","Lean Away Lateral Raise","Front Raise","Cable Front Raise","Plate Front Raise","Rear Delt Fly","Reverse Pec Deck","Bent Over Rear Delt Raise","Cable Rear Delt Fly","Face Pull","Upright Row","Cable Upright Row","Landmine Press"],
-Biceps:["Barbell Curl","EZ Bar Curl","Dumbbell Curl","Alternating Dumbbell Curl","Incline Dumbbell Curl","Hammer Curl","Cross Body Hammer Curl","Preacher Curl","Dumbbell Preacher Curl","Cable Curl","Rope Cable Curl","Bayesian Cable Curl","Spider Curl","Concentration Curl","Reverse Curl","Zottman Curl","Machine Curl"],
-Triceps:["Close Grip Bench Press","Triceps Pushdown","Rope Pushdown","Straight Bar Pushdown","V Bar Pushdown","Overhead Cable Extension","Single Arm Cable Extension","Dumbbell Overhead Extension","EZ Bar Overhead Extension","Skull Crusher","Dumbbell Skull Crusher","Cable Skull Crusher","Tate Press","JM Press","Bench Dip","Parallel Bar Dip","Assisted Dip","Triceps Kickback"],
-Calves:["Standing Calf Raise","Seated Calf Raise","Leg Press Calf Raise","Donkey Calf Raise","Smith Machine Calf Raise","Single Leg Calf Raise","Bodyweight Calf Raise","Tibialis Raise"],
-Core:["Cable Crunch","Machine Crunch","Weighted Crunch","Hanging Knee Raise","Hanging Leg Raise","Captain's Chair Knee Raise","Reverse Crunch","Ab Wheel Rollout","Plank","Weighted Plank","Side Plank","Dead Bug","Bird Dog","Pallof Press","Cable Wood Chop","Cable Lift","Russian Twist","Bicycle Crunch","V Up","Sit Up","Decline Sit Up","Toe Touch","Dragon Flag"],
-Forearms:["Wrist Curl","Reverse Wrist Curl","Behind Back Wrist Curl","Reverse Barbell Curl","Farmer Carry","Suitcase Carry","Plate Pinch Hold","Dead Hang"],
-"Full Body":["Barbell Clean","Power Clean","Hang Clean","Clean and Press","Push Jerk","Split Jerk","Snatch","Hang Snatch","Dumbbell Clean","Dumbbell Clean and Press","Kettlebell Swing","Turkish Get Up","Thruster","Man Maker","Sled Push","Sled Drag"]
-};
-const iconFor=g=>({Chest:"🏋️",Back:"🦾",Quads:"🦵",Hamstrings:"🦵",Glutes:"🍑",Shoulders:"💪",Biceps:"💪",Triceps:"💪",Calves:"🦵",Core:"◈",Forearms:"🤝","Full Body":"🏋️"})[g]||"🏋️";
-const typeFor=n=>/dumbbell|single leg|alternating|hammer|goblet|arnold|lateral raise|front raise|preacher|concentration|zottman|kickback|tate press|turkish|man maker|thruster/i.test(n)?"dumbbell":/cable|pulldown|pushdown|extension|face pull|crossover|kickback|pallof|wood chop|cable lift|leg curl/i.test(n)?"cable":/machine|pec deck|hack squat|leg press|smith|captain|sled/i.test(n)?"machine":/push up|pull up|chin up|dip|plank|dead bug|bird dog|v up|sit up|toe touch|dragon flag|bodyweight|dead hang|nordic|glute ham|lunge|step up|calf raise/i.test(n)?"bodyweight":"barbell";
-const starter=Object.entries(groups).flatMap(([g,ns])=>ns.map(n=>[n,g,typeFor(n),iconFor(g)]));
-
-const KEY="strength-log-v3";
-let data={exercises:[],sessions:[]};
-try{
-  const raw=localStorage.getItem(KEY), oldData=localStorage.getItem("strength-log-v2");
-  const parsed=raw?JSON.parse(raw):(oldData?JSON.parse(oldData):null);
-  if(parsed && typeof parsed==="object"){data=parsed;}
-}catch(err){
-  try{localStorage.removeItem(KEY);localStorage.removeItem("strength-log-v2")}catch(ignore){}
-}
-if(!Array.isArray(data.exercises))data.exercises=[];
-if(!Array.isArray(data.sessions))data.sessions=[];
-const existing=new Set(data.exercises.map(e=>String(e.name).toLowerCase()));
-starter.forEach((x,i)=>{if(!existing.has(x[0].toLowerCase()))data.exercises.push({id:"e"+i,name:x[0],group:x[1],type:x[2],icon:x[3],builtin:true});});
-save();
-const app=document.getElementById("app"); let filter="All";
-function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-function save(){localStorage.setItem(KEY,JSON.stringify(data))}
-function lastFor(id){return data.sessions.filter(s=>s.exerciseId===id).sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt)[0]}
-function home(){
-  const used={};
-  data.exercises.filter(e=>data.sessions.some(s=>s.exerciseId===e.id)).forEach(e=>{
-    if(!used[e.group])used[e.group]=[];
-    used[e.group].push(e);
-  });
-  let html='<div class="top"><div><h1>Strength Log</h1><div class="muted">Log. Compare. Get stronger.</div></div><button class="btn" id="addExercise">+ Exercise</button></div>';
-  if(!Object.keys(used).length){
-    html+='<div class="card empty">No exercises logged yet.<br><br><button class="btn primary" id="chooseExercise">Choose an exercise</button></div>';
-  }else{
-    Object.keys(used).forEach(g=>{
-      html+='<div class="section"><h3>'+esc(g)+'</h3>';
-      used[g].forEach(e=>{
-        const l=lastFor(e.id), s=l&&l.sets[0];
-        html+='<div class="exercise" data-exercise="'+esc(e.id)+'"><div class="thumb">'+esc(e.icon||"🏋️")+'</div><div style="flex:1"><b>'+esc(e.name)+'</b><small>'+(s?esc(s.weight)+" kg × "+esc(s.reps):esc(e.group))+'</small></div><span>›</span></div>';
-      });
-      html+='</div>';
-    });
-  }
-  html+='<div class="section"><div class="card"><b>Data</b><div class="muted" style="margin:5px 0 12px">Your workouts stay on this device.</div><button class="btn" id="backupBtn">Export backup</button> <button class="btn" id="restoreBtn">Import backup</button></div></div>';
-  app.innerHTML=html;
-  document.getElementById("addExercise").onclick=library;
-  const choose=document.getElementById("chooseExercise"); if(choose)choose.onclick=library;
-  document.querySelectorAll("[data-exercise]").forEach(x=>x.onclick=()=>openExercise(x.dataset.exercise));
-  document.getElementById("backupBtn").onclick=backup;
-  document.getElementById("restoreBtn").onclick=restore;
-}
-function library(){
-  filter="All";
-  let chips='<button class="chip active" data-filter="All">All</button>';
-  Object.keys(groups).forEach(g=>{chips+='<button class="chip" data-filter="'+esc(g)+'">'+esc(g)+'</button>';});
-  app.innerHTML='<button class="btn back" id="backHome">← Back</button><div class="top"><div><h2>Exercise library</h2><div class="library-count">'+data.exercises.length+' exercises · 13 muscle groups</div></div><button class="btn" id="customBtn">+ Custom</button></div><div class="search"><input id="q" placeholder="Search exercises..."></div><div class="chips">'+chips+'</div><div id="lib"></div>';
-  document.getElementById("backHome").onclick=home;
-  document.getElementById("customBtn").onclick=customExercise;
-  document.querySelectorAll("[data-filter]").forEach(btn=>btn.onclick=()=>{filter=btn.dataset.filter;document.querySelectorAll("[data-filter]").forEach(x=>x.classList.toggle("active",x===btn));renderLibrary();});
-  document.getElementById("q").oninput=renderLibrary;
-  renderLibrary();
-}
-function setFilter(g){filter=g;renderLibrary()}
-function renderLibrary(){
- const q=(document.getElementById("q")?.value||"").toLowerCase();
- const xs=data.exercises.filter(e=>(filter==="All"||e.group===filter)&&(!q||e.name.toLowerCase().includes(q)||e.group.toLowerCase().includes(q)));
- document.getElementById("lib").innerHTML=xs.map(e=>'<div class="exercise" onclick="openExercise(\''+e.id+'\')"><div class="thumb">'+esc(e.icon||"🏋️")+'</div><div style="flex:1"><b>'+esc(e.name)+'</b><small>'+esc(lastFor(e.id)?lastFor(e.id).sets.map(s=>s.weight+" kg × "+s.reps).join(" · "):e.group)+'</small></div><span>›</span></div>').join("")||'<div class="empty">No exercise found.</div>';
-}
-function customExercise(){app.innerHTML='<button class="btn back" onclick="library()">← Library</button><h2>Custom exercise</h2><label>Exercise name</label><input id="ename" placeholder="e.g. Hammer Strength Press"><label>Muscle group</label><input id="egroup" placeholder="e.g. Chest"><label>Weight convention</label><select id="etype"><option value="barbell">Barbell · total weight including bar</option><option value="dumbbell">Dumbbell · one dumbbell</option><option value="machine">Machine / stack selected</option><option value="cable">Cable / stack selected</option><option value="bodyweight">Bodyweight</option><option value="other">Other</option></select><div style="margin-top:18px"><button class="btn primary" onclick="createCustom()">Create exercise</button></div>'}
-function createCustom(){const n=document.getElementById("ename").value.trim();if(!n)return alert("Enter a name.");const e={id:"c"+Date.now(),name:n,group:document.getElementById("egroup").value.trim()||"Other",type:document.getElementById("etype").value,icon:"🏋️",builtin:false};data.exercises.push(e);save();openExercise(e.id)}
-function openExercise(id){
- const e=data.exercises.find(x=>x.id===id); const sessions=data.sessions.filter(x=>x.exerciseId===id); let top=0;sessions.forEach(s=>s.sets.forEach(z=>top=Math.max(top,+z.weight||0)));
- app.innerHTML='<button class="btn back" onclick="home()">← Exercises</button><div class="top"><div><h2>'+esc(e.name)+'</h2><div class="muted">'+esc(e.group)+' · '+esc(e.type)+'</div></div><button class="btn primary" onclick="logWorkout(\''+id+'\')">+ Log</button></div><div class="card"><b>Weight convention</b><div class="muted" style="margin-top:6px">'+esc(e.type==="barbell"?"Record total weight including the bar.":e.type==="dumbbell"?"Record the weight of one dumbbell.":e.type==="bodyweight"?"Use 0 kg for bodyweight-only work.":"Record the selected machine/cable weight.")+'</div></div><div class="stats"><div class="stat"><b>'+ (top?top+" kg":"—")+'</b><span>Best weight</span></div><div class="stat"><b>'+sessions.length+'</b><span>Workouts</span></div></div><div class="card"><b>History</b>'+historyHTML(sessions)+'</div>';
-}
-function historyHTML(sessions){if(!sessions.length)return '<div class="empty">No workouts logged yet.</div>';return sessions.sort((a,b)=>b.date.localeCompare(a.date)).map(s=>'<div style="margin:16px 0"><div class="session-head"><b>'+new Date(s.date+"T00:00:00").toLocaleDateString()+'</b><button class="btn danger" onclick="deleteSession(\''+s.id+'\',\''+s.exerciseId+'\')">Delete</button></div><table class="history"><tr><th>Set</th><th>Weight</th><th>Reps</th></tr>'+s.sets.map((z,i)=>'<tr><td>'+(i+1)+'</td><td>'+z.weight+' kg</td><td>'+z.reps+'</td></tr>').join("")+'</table></div>').join("")}
-function logWorkout(id){const e=data.exercises.find(x=>x.id===id),last=lastFor(id),sets=(last?last.sets:[{weight:"",reps:""}]).map(x=>Object.assign({},x));app.innerHTML='<button class="btn back" onclick="openExercise(\''+id+'\')">← '+esc(e.name)+'</button><h2>Log workout</h2><div class="muted">Previous workout pre-filled.</div><div class="card"><div id="sets">'+sets.map(setRow).join("")+'</div><button class="btn" onclick="addSet()">+ Set</button></div><div class="note">Barbell = total weight including bar. Dumbbell = one dumbbell. Machine/cable = selected weight.</div><div style="margin-top:15px"><button class="btn primary" onclick="saveWorkout(\''+id+'\')">Save workout</button></div>'}
-function setRow(x,i){return '<div class="set"><span>'+(i+1)+'</span><input class="wt" type="number" step="0.5" value="'+esc(x.weight)+'" placeholder="kg"><input class="rp" type="number" value="'+esc(x.reps)+'" placeholder="reps"><button class="del" onclick="this.parentElement.remove()">×</button></div>'}
-function addSet(){document.getElementById("sets").insertAdjacentHTML("beforeend",setRow({weight:"",reps:""},document.querySelectorAll(".set").length))}
-function saveWorkout(id){const sets=[...document.querySelectorAll(".set")].map(r=>({weight:+r.querySelector(".wt").value||0,reps:+r.querySelector(".rp").value||0})).filter(x=>x.reps>0);if(!sets.length)return alert("Enter at least one set.");data.sessions.push({id:"s"+Date.now(),exerciseId:id,date:new Date().toISOString().slice(0,10),createdAt:Date.now(),sets:sets});save();openExercise(id)}
-function deleteSession(sid,id){if(!confirm("Delete this workout?"))return;data.sessions=data.sessions.filter(s=>s.id!==sid);save();openExercise(id)}
-function backup(){const b=new Blob([JSON.stringify(data,null,2)],{type:"application/json"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="strength-log-backup.json";a.click()}
-function restore(){const i=document.createElement("input");i.type="file";i.accept=".json";i.onchange=()=>{const r=new FileReader();r.onload=()=>{try{const x=JSON.parse(r.result);if(!x.exercises||!x.sessions)throw 0;data=x;save();home()}catch(e){alert("Invalid backup.")}};r.readAsText(i.files[0])};i.click()}
-home();</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#101010">
+  <meta name="description" content="A simple strength training progress tracker.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Strength Log">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+  <link rel="stylesheet" href="./app.css">
+  <title>Strength Log</title>
+</head>
+<body>
+  <main>
+    <div id="app">
+      <div class="card"><h1>Strength Log</h1><p class="muted" style="margin-top:8px">Loading…</p></div>
+    </div>
+  </main>
+  <script src="./app.js" defer></script>
+</body>
+</html>
