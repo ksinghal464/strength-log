@@ -10,7 +10,7 @@ const CATALOG = {
   Back: ["Conventional Deadlift|b", "Sumo Deadlift|b", "Lat Pulldown|c", "Close Grip Lat Pulldown|c", "Pull Up|w", "Chin Up|w", "Assisted Pull Up|m", "Barbell Row|b", "T-Bar Row|b", "Dumbbell Row|d", "Seated Cable Row|c", "Machine Row|m", "Straight Arm Pulldown|c", "Dumbbell Pullover|d"],
   Quads: ["Barbell Back Squat|b", "Front Squat|b", "Hack Squat|m", "Leg Press|m", "Leg Extension|m", "Bulgarian Split Squat|d", "Walking Lunge|d", "Dumbbell Lunge|d", "Goblet Squat|d", "Smith Machine Squat|m"],
   Hamstrings: ["Romanian Deadlift|b", "Stiff Leg Deadlift|b", "Good Morning|b", "Glute Ham Raise|w", "Lying Leg Curl|m", "Seated Leg Curl|m"],
-  Glutes: ["Barbell Hip Thrust|b", "Glute Bridge|b", "Cable Kickback|c", "Cable Pull Through|c", "Step Up|d", "45 Degree Hip Extension|w"],
+  Glutes: ["Barbell Hip Thrust|b", "Machine Hip Thrust|m", "Glute Bridge|b", "Cable Kickback|c", "Cable Pull Through|c", "Step Up|d", "45 Degree Hip Extension|w"],
   Shoulders: ["Overhead Press|b", "Push Press|b", "Seated Dumbbell Shoulder Press|d", "Arnold Press|d", "Dumbbell Lateral Raise|d", "Cable Lateral Raise|c", "Front Raise|d", "Rear Delt Fly|d", "Reverse Pec Deck|m", "Face Pull|c", "Upright Row|b"],
   Biceps: ["Barbell Curl|b", "EZ Bar Curl|b", "Dumbbell Curl|d", "Incline Dumbbell Curl|d", "Hammer Curl|d", "Preacher Curl|b", "Cable Curl|c", "Concentration Curl|d", "Machine Curl|m"],
   Triceps: ["Close Grip Bench Press|b", "Triceps Pushdown|c", "Rope Pushdown|c", "Overhead Cable Extension|c", "Dumbbell Overhead Extension|d", "Skull Crusher|b", "Parallel Bar Dip|w", "Bench Dip|w", "Triceps Kickback|d"],
