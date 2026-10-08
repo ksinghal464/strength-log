@@ -72,7 +72,7 @@ function canonGroup(g, existing) {
 }
 
 /* ---------- Storage ---------- */
-const APP_VERSION = "v23"; // keep in sync with VERSION in sw.js; shown in Settings
+const APP_VERSION = "v24"; // keep in sync with VERSION in sw.js; shown in Settings
 const KEY = "strength-log-v3";
 const LEGACY_KEYS = ["strength-log-v2"];
 const SCHEMA = 5; // 5: updatedAt on items + deletion tombstones (for sync)
@@ -483,10 +483,27 @@ const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); r
 const app = document.getElementById("app");
 let view = { name: "home" };
 let libFilter = "All";
-const HISTORY_STEP_WEEKS = 3;
-let historyWeeks = HISTORY_STEP_WEEKS;
-let nextHiddenDay = null; // newest date not yet shown on the home page
+const HOME_DAYS = 3; // workout days shown on the home page
 let libQuery = "";
+
+/** Sessions grouped by workout date, newest first: [[date, sessions[]], ...]. */
+function workoutDays() {
+  const days = new Map();
+  for (const s of data.sessions.slice().sort(byNewest)) {
+    if (!findExercise(s.exerciseId)) continue;
+    if (!days.has(s.date)) days.set(s.date, []);
+    days.get(s.date).push(s);
+  }
+  return [...days];
+}
+
+function dayHTML([d, list]) {
+  const today = localDate(), yesterday = localDate(addDays(new Date(), -1));
+  const label = d === today ? "Today" : d === yesterday ? "Yesterday" : fmtDate(d);
+  const sets = list.reduce((n, s) => n + s.sets.length, 0);
+  return '<div class="section"><h3>' + esc(label) + ' <span class="muted">· ' + list.length + " exercise" + (list.length > 1 ? "s" : "") + " · " + sets + " set" + (sets === 1 ? "" : "s") + "</span></h3>" +
+    list.map((s) => exerciseRow(findExercise(s.exerciseId), s.sets.length + " set" + (s.sets.length === 1 ? "" : "s") + " · best " + sessionSummary(s))).join("") + "</div>";
+}
 
 function go(name, params = {}) {
   view = { name, ...params };
@@ -616,30 +633,26 @@ const VIEWS = {
     }
     html += weekCardHTML() + prsCardHTML(byEx) + muscleCardHTML();
 
-    // History grouped by workout date, newest first; each row shows that day's session.
-    const days = new Map();
-    for (const s of data.sessions.slice().sort(byNewest)) {
-      if (!byEx.has(s.exerciseId)) continue;
-      if (!days.has(s.date)) days.set(s.date, []);
-      days.get(s.date).push(s);
-    }
-    const today = localDate(), yesterday = localDate(addDays(new Date(), -1));
-    const dayLabel = (d) => (d === today ? "Today" : d === yesterday ? "Yesterday" : fmtDate(d));
-    // Show the last few weeks; "Show more" extends the window (always at least one day).
-    const cutoff = localDate(addDays(new Date(), -7 * historyWeeks));
-    const all = [...days];
-    let shown = all.filter(([d]) => d > cutoff);
-    if (!shown.length) shown = all.slice(0, 1);
-    for (const [d, list] of shown) {
-      const sets = list.reduce((n, s) => n + s.sets.length, 0);
-      html += '<div class="section"><h3>' + esc(dayLabel(d)) + ' <span class="muted">· ' + list.length + " exercise" + (list.length > 1 ? "s" : "") + " · " + sets + " set" + (sets === 1 ? "" : "s") + "</span></h3>" +
-        list.map((s) => exerciseRow(findExercise(s.exerciseId), s.sets.length + " set" + (s.sets.length === 1 ? "" : "s") + " · best " + sessionSummary(s))).join("") + "</div>";
-    }
-    nextHiddenDay = shown.length < all.length ? all[shown.length][0] : null;
-    if (nextHiddenDay) {
-      html += '<div class="section"><button class="btn" data-action="more-history">Show more (' + (all.length - shown.length) + " older day" + (all.length - shown.length === 1 ? "" : "s") + ")</button></div>";
-    }
+    // Only the most recent workout days here; the full list lives on the History page.
+    const all = workoutDays();
+    html += '<div class="top" style="margin-top:20px"><h3>Recent workouts</h3>' +
+      (all.length > HOME_DAYS ? '<button class="btn small" data-action="history">View all (' + all.length + " days) ›</button>" : "") + "</div>";
+    html += all.slice(0, HOME_DAYS).map(dayHTML).join("");
     return html + settingsHTML();
+  },
+
+  history() {
+    const all = workoutDays();
+    let html = backBtn("home", "Back") +
+      '<div class="top"><div><h2>History</h2><div class="muted">' + all.length + " workout day" + (all.length === 1 ? "" : "s") + "</div></div></div>";
+    if (!all.length) return html + '<div class="card empty">No workouts logged yet.</div>';
+    let month = "";
+    for (const day of all) {
+      const m = new Date(day[0] + "T00:00").toLocaleDateString(undefined, { month: "long", year: "numeric" });
+      if (m !== month) { month = m; html += '<h2 class="muted" style="margin:24px 0 0">' + esc(m) + "</h2>"; }
+      html += dayHTML(day);
+    }
+    return html;
   },
 
   library() {
@@ -913,15 +926,7 @@ const ACTIONS = {
   log: (id) => go("log", { id }),
   custom: (id) => go("custom", { id: id || null }),
   filter: (g) => { libFilter = g; go("library"); },
-  "more-history": () => {
-    historyWeeks += HISTORY_STEP_WEEKS;
-    // Skip over gaps so each tap reveals at least one more day.
-    if (nextHiddenDay) {
-      const ago = Math.ceil((Date.parse(localDate()) - Date.parse(nextHiddenDay)) / 864e5);
-      historyWeeks = Math.max(historyWeeks, Math.ceil((ago + 1) / 7));
-    }
-    render();
-  },
+  history: () => go("history"),
   reload: () => location.reload(),
   metric: (m) => { chartMetric = m; render(); },
   range: (r) => { chartRange = r; render(); },
