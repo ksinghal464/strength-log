@@ -24,6 +24,8 @@ Settings → Cloud sync. Paste a fine-grained GitHub token with only **Account p
 The app keeps a private gist (`Strength Log sync`, file `strength-log.json`) in sync: it pulls and merges on open,
 when the app regains focus, when the network comes back, and ~1.5 s after each change.
 After clearing browser data or on a new device, paste the token again and everything is restored.
+The gist also contains `strength-log.csv` (one row per set: date, exercise, group, type, set, weight_kg, weight_lb, reps, est_1rm_kg, volume_kg, note).
+GitHub shows it as a searchable table; **Raw** opens it in Excel/Google Sheets. It is regenerated on every sync — edit data in the app, not the CSV.
 The token is stored only in this browser (`strength-log-sync`) and is never included in exports or the gist.
 
 ## Deploy

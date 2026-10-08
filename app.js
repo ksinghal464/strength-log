@@ -233,6 +233,7 @@ function migrate(input) {
  */
 const SYNC_KEY = "strength-log-sync";
 const GIST_FILE = "strength-log.json";
+const GIST_CSV = "strength-log.csv"; // read-only table view, regenerated from the JSON on every sync
 const GIST_DESC = "Strength Log sync";
 const API = "https://api.github.com";
 let sync = readSyncConfig();
@@ -270,11 +271,16 @@ async function findOrCreateGist() {
     if (hit) return hit.id;
     if (list.length < 100) break;
   }
-  const g = await gh("/gists", { method: "POST", body: JSON.stringify({ description: GIST_DESC, public: false, files: { [GIST_FILE]: { content: JSON.stringify(data) } } }) });
+  const g = await gh("/gists", { method: "POST", body: JSON.stringify({ description: GIST_DESC, public: false, files: gistFiles(JSON.stringify(data)) }) });
   return g.id;
 }
+function gistFiles(text) {
+  return { [GIST_FILE]: { content: text }, [GIST_CSV]: { content: toCSV(JSON.parse(text)) } };
+}
+let gistHasCsv = false;
 async function readGist() {
   const g = await gh("/gists/" + sync.gistId);
+  gistHasCsv = !!(g.files && g.files[GIST_CSV]);
   const f = g.files && g.files[GIST_FILE];
   if (!f) return null;
   const text = f.truncated ? await (await fetch(f.raw_url)).text() : f.content;
@@ -306,8 +312,8 @@ async function runSync() {
       writeLocal();
       if (view.name !== "log" && view.name !== "custom") render();
     }
-    if (!remote || JSON.stringify(mergeData(remote, remote)) !== text) {
-      await gh("/gists/" + sync.gistId, { method: "PATCH", body: JSON.stringify({ files: { [GIST_FILE]: { content: text } } }) });
+    if (!remote || !gistHasCsv || JSON.stringify(mergeData(remote, remote)) !== text) {
+      await gh("/gists/" + sync.gistId, { method: "PATCH", body: JSON.stringify({ files: gistFiles(text) }) });
     }
     sync.lastSync = Date.now();
     sync.error = "";
@@ -319,6 +325,26 @@ async function runSync() {
   showSyncStatus();
   if (syncAgain) { syncAgain = false; scheduleSync(0); }
 }
+/** One row per set, oldest first. Opens directly in Excel / Google Sheets / Numbers. */
+function toCSV(d) {
+  const ex = new Map(d.exercises.map((e) => [e.id, e]));
+  const cell = (v) => {
+    let t = String(v == null ? "" : v);
+    if (typeof v === "string" && /^[=+\-@]/.test(t)) t = "'" + t; // don't let spreadsheets run text as a formula
+    return /[",\r\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  };
+  const r1 = (n) => Math.round(n * 10) / 10;
+  const rows = [["date", "exercise", "group", "type", "set", "weight_kg", "weight_lb", "reps", "est_1rm_kg", "volume_kg", "note"]];
+  for (const s of d.sessions.slice().sort((a, b) => a.date.localeCompare(b.date) || a.createdAt - b.createdAt)) {
+    const e = ex.get(s.exerciseId) || { name: s.exerciseId, group: "", type: "" };
+    s.sets.forEach((z, i) => rows.push([
+      s.date, e.name, e.group, e.type, i + 1, z.weight, r1(z.weight / KG_PER_LB), z.reps,
+      r1(e1rm(z)), r1(z.weight * z.reps), i === 0 ? s.note : "",
+    ]));
+  }
+  return rows.map((row) => row.map(cell).join(",")).join("\r\n") + "\r\n";
+}
+
 function syncStatusText() {
   if (sync.error) return "⚠ " + sync.error;
   if (!sync.lastSync) return "Not synced yet.";
