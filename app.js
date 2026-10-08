@@ -860,15 +860,26 @@ function chart(pts, metric) {
       : '<circle cx="' + cx + '" cy="' + cy + '" r="3.5" fill="#bbb"' + (p.faded ? ' opacity=".35"' : "") + "></circle>";
   }).join("");
   // Tap/drag on the chart selects the nearest workout; its exact numbers show in the readout.
-  chartPoints = pts.map((p, i) => ({ x: x(p.date, i), y: y(vals[i]), html: pointReadout(p, metric) }));
-  chartBox = { W, top: P.t, bottom: H - P.b };
+  chartPoints = pts.map((p, i) => ({ x: x(p.date, i), y: y(vals[i]), label: fmtMetric(p.v, metric), html: pointReadout(p, metric) }));
+  chartBox = { W, left: P.l, right: W - P.r, top: P.t, bottom: H - P.b };
   const last = chartPoints[chartPoints.length - 1];
+  const tag = tagPos(last);
   return '<div class="readout" id="readout">' + last.html + "</div>" +
     '<svg class="chart" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + esc(METRICS[metric].label) + ' progress chart. Tap to see values.">' + grid + labels +
     '<path d="' + path(vals) + '" fill="none" stroke="#555" stroke-width="1.5"/>' +
     '<path d="' + path(trend) + '" fill="none" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/>' + marks +
     '<g id="cursor"><line x1="' + last.x + '" x2="' + last.x + '" y1="' + P.t + '" y2="' + (H - P.b) + '" stroke="#ffd76a" stroke-dasharray="3 3"/>' +
-    '<circle cx="' + last.x + '" cy="' + last.y + '" r="6" fill="none" stroke="#ffd76a" stroke-width="2"/></g></svg>';
+    '<circle cx="' + last.x + '" cy="' + last.y + '" r="6" fill="none" stroke="#ffd76a" stroke-width="2"/>' +
+    '<rect x="' + tag.rx + '" y="' + tag.ry + '" width="' + tag.w + '" height="20" rx="6" fill="#ffd76a"/>' +
+    '<text class="tag" x="' + tag.tx + '" y="' + tag.ty + '" text-anchor="middle">' + esc(last.label) + "</text></g></svg>";
+}
+/** Value label next to the cursor: above the point, or below it near the top edge; kept inside the plot. */
+function tagPos(p) {
+  const w = Math.round(p.label.length * 6.6 + 14);
+  const cx = Math.min(Math.max(p.x, chartBox.left + w / 2), chartBox.right - w / 2);
+  const above = p.y - 32 >= chartBox.top - 10;
+  const ry = above ? p.y - 32 : p.y + 12;
+  return { w, rx: (cx - w / 2).toFixed(1), ry: ry.toFixed(1), tx: cx.toFixed(1), ty: (ry + 14).toFixed(1) };
 }
 
 let chartPoints = [], chartBox = null;
@@ -891,9 +902,12 @@ function selectChartPoint(svg, clientX) {
   let best = chartPoints[0];
   for (const p of chartPoints) if (Math.abs(p.x - vx) < Math.abs(best.x - vx)) best = p;
   const g = svg.querySelector("#cursor");
-  const [line, dot] = g.children;
+  const [line, dot, box, text] = g.children;
   line.setAttribute("x1", best.x); line.setAttribute("x2", best.x);
   dot.setAttribute("cx", best.x); dot.setAttribute("cy", best.y);
+  const t = tagPos(best);
+  box.setAttribute("x", t.rx); box.setAttribute("y", t.ry); box.setAttribute("width", t.w);
+  text.setAttribute("x", t.tx); text.setAttribute("y", t.ty); text.textContent = best.label;
   const ro = document.getElementById("readout");
   if (ro) ro.innerHTML = best.html;
 }

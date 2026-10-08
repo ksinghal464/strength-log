@@ -132,3 +132,4 @@ label { display: block; color: #aaa; font-size: 12px; margin: 13px 0 6px; }
 .pr-text { color: #ffd76a; }
 .history tr.pr-set td { background: rgba(255, 215, 106, .07); }
 .session.is-pr { border-left: 3px solid #ffd76a; padding-left: 10px; }
+.chart .tag { fill: #111; font-size: 12px; font-weight: 700; }
