@@ -836,18 +836,28 @@ const RANGES = { "1M": 30, "3M": 91, "6M": 182, "1Y": 365, All: 0 };
 let chartMetric = null; // null = exercise's main metric
 let chartRange = "All";
 
-/** Whole-number axis: step from 1, 2, 5 × 10^k (and 25) giving ~3–5 gridlines (at most 3 intervals before snapping); bounds snapped to the step. */
+/**
+ * Whole-number y-axis that adapts to the data: tries round steps (1, 2, 5, 10, 20, 25, 50, 100, …),
+ * snaps the bounds to each, and keeps the one giving closest to 5 gridlines (max 6).
+ * e.g. 68–84 -> 65 70 75 80 85;  55–95 -> 50 60 70 80 90 100;  1.2k–5.4k -> 1000 … 6000.
+ */
 function niceAxis(min, max) {
   if (max - min < 2) { min -= 1; max += 1; } // flat data: give it some room
-  const pad = (max - min) * 0.08;
+  const pad = (max - min) * 0.05;
   min = Math.max(0, min - pad); max += pad;
-  const steps = [];
-  for (let k = 1; k <= 1e7; k *= 10) steps.push(k, 2 * k, 2.5 * k, 5 * k);
-  const step = steps.find((st) => st >= 1 && Number.isInteger(st) && (max - min) / st <= 3) || steps[steps.length - 1];
-  const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
+  let best = null;
+  for (let k = 1; k <= 1e7; k *= 10) {
+    for (const step of [k, 2 * k, 5 * k, ...(k >= 10 ? [2.5 * k] : [])]) {
+      const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
+      const n = Math.round((hi - lo) / step) + 1;
+      if (n > 6) continue;
+      const score = Math.abs(n - 5) + (hi - lo - (max - min)) / (max - min) * 0.5; // prefer ~5 ticks, little wasted space
+      if (!best || score < best.score) best = { lo, hi, step, score };
+    }
+  }
   const ticks = [];
-  for (let v = lo; v <= hi + 1e-9; v += step) ticks.push(v);
-  return { lo, hi, ticks };
+  for (let v = best.lo; v <= best.hi + 1e-9; v += best.step) ticks.push(v);
+  return { lo: best.lo, hi: best.hi, ticks };
 }
 
 /** Progress chart: grey line through workouts, white trend line, gold ★ on PRs, faded low-confidence points. */
