@@ -72,7 +72,7 @@ function canonGroup(g, existing) {
 }
 
 /* ---------- Storage ---------- */
-const APP_VERSION = "v20"; // keep in sync with VERSION in sw.js; shown in Settings
+const APP_VERSION = "v21"; // keep in sync with VERSION in sw.js; shown in Settings
 const KEY = "strength-log-v3";
 const LEGACY_KEYS = ["strength-log-v2"];
 const SCHEMA = 5; // 5: updatedAt on items + deletion tombstones (for sync)
@@ -441,17 +441,20 @@ function series(sessions, metric) {
   pts.forEach((p, i) => { p.trend = Math.max(...pts.slice(Math.max(0, i - 2), i + 1).map((q) => q.v)); });
   return pts;
 }
-/** PR workouts (new best in the main metric) -> index of the set that achieved it. */
+/**
+ * The current best workout (highest main metric; earliest wins a tie) -> index of the set that achieved it.
+ * Only one workout per exercise holds the star; it moves when a later workout beats it.
+ */
 function workoutPRs(sessions) {
   const out = new Map();
   if (!sessions.length) return out;
   const m = primaryMetric(sessions);
-  for (const p of series(sessions, m)) {
-    if (!p.pr) continue;
-    const s = sessions.find((x) => x.id === p.id);
-    const z = m === "e1rm" ? bestE1rmSet(s) : s.sets.reduce((b, x) => (x.reps > b.reps ? x : b));
-    out.set(s.id, s.sets.indexOf(z));
-  }
+  let top = null;
+  for (const p of series(sessions, m)) if (!top || p.v > top.v) top = p; // series is oldest-first
+  if (!top) return out;
+  const s = sessions.find((x) => x.id === top.id);
+  const z = m === "e1rm" ? bestE1rmSet(s) : s.sets.reduce((b, x) => (x.reps > b.reps ? x : b));
+  out.set(s.id, s.sets.indexOf(z));
   return out;
 }
 /** Session ids that set a new best in the exercise's main metric. */
