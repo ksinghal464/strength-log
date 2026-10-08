@@ -404,7 +404,11 @@ const VIEWS = {
       stat(best1rm ? fmtW(round1(best1rm)) : "—", "Est. 1RM") +
       stat(volume ? Math.round(toUnit(volume)).toLocaleString() + " " + unit() : "—", "Total volume") +
       stat(sessions.length, "Workouts") + "</div>" +
-      (sessions.length > 1 ? '<div class="card"><b>Progress</b><div class="muted">' + (best1rm ? "Best est. 1RM per workout" : "Best reps per workout") + "</div>" + chart(sessions) + "</div>" : "") +
+      '<div class="card"><b>Progress</b><div class="muted">' +
+      (sessions.length > 1
+        ? (best1rm ? "Best est. 1RM per workout" : "Best reps per workout") + "</div>" + chart(sessions)
+        : (sessions.length ? "Log one more workout" : "Log at least two workouts") + " to see your progress chart.</div>") +
+      "</div>" +
       '<div class="card"><b>History</b>' + history + "</div>";
   },
 
