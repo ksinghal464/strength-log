@@ -72,7 +72,7 @@ function canonGroup(g, existing) {
 }
 
 /* ---------- Storage ---------- */
-const APP_VERSION = "v18"; // keep in sync with VERSION in sw.js; shown in Settings
+const APP_VERSION = "v19"; // keep in sync with VERSION in sw.js; shown in Settings
 const KEY = "strength-log-v3";
 const LEGACY_KEYS = ["strength-log-v2"];
 const SCHEMA = 5; // 5: updatedAt on items + deletion tombstones (for sync)
@@ -441,33 +441,17 @@ function series(sessions, metric) {
   pts.forEach((p, i) => { p.trend = Math.max(...pts.slice(Math.max(0, i - 2), i + 1).map((q) => q.v)); });
   return pts;
 }
-/**
- * What each workout improved on, vs. all earlier workouts of the exercise:
- * id -> { main: bool (new best in the main metric), reps: [n...] (new personal bests by reps), sets: Set(set index) }.
- */
+/** PR workouts (new best in the main metric) -> index of the set that achieved it. */
 function workoutPRs(sessions) {
   const out = new Map();
   if (!sessions.length) return out;
-  const main = new Set(series(sessions, primaryMetric(sessions)).filter((p) => p.pr).map((p) => p.id));
-  const best = new Map(REP_TARGETS.map((n) => [n, -1]));
-  sessions.slice().sort(byOldest).forEach((s, i) => {
-    const info = { main: main.has(s.id), reps: [], sets: new Set() };
-    const after = new Map(best);
-    s.sets.forEach((z, k) => {
-      for (const n of REP_TARGETS) {
-        if (z.reps >= n && z.weight > 0 && z.weight > best.get(n)) {
-          if (i > 0) { if (!info.reps.includes(n)) info.reps.push(n); info.sets.add(k); }
-          after.set(n, Math.max(after.get(n), z.weight));
-        }
-      }
-    });
-    if (info.main) {
-      const z = primaryMetric(sessions) === "e1rm" ? bestE1rmSet(s) : s.sets.reduce((b, x) => (x.reps > b.reps ? x : b));
-      info.sets.add(s.sets.indexOf(z));
-    }
-    for (const [n, w] of after) best.set(n, w);
-    out.set(s.id, info);
-  });
+  const m = primaryMetric(sessions);
+  for (const p of series(sessions, m)) {
+    if (!p.pr) continue;
+    const s = sessions.find((x) => x.id === p.id);
+    const z = m === "e1rm" ? bestE1rmSet(s) : s.sets.reduce((b, x) => (x.reps > b.reps ? x : b));
+    out.set(s.id, s.sets.indexOf(z));
+  }
   return out;
 }
 /** Session ids that set a new best in the exercise's main metric. */
@@ -488,17 +472,6 @@ function trendChange(pts, days) {
   }
   if (!base.trend) return null;
   return { diff: last.trend - base.trend, pct: ((last.trend - base.trend) / base.trend) * 100, since: base.date };
-}
-/** Best actual weight lifted for at least N reps (a 100×8 also counts as a 5-rep best). */
-const REP_TARGETS = [5, 8, 10, 12, 15, 18];
-function repMaxes(sessions, targets = REP_TARGETS) {
-  return targets.map((n) => {
-    let best = null;
-    for (const s of sessions.slice().sort(byOldest)) for (const z of s.sets) { // oldest first: date = first time achieved
-      if (z.reps >= n && (!best || z.weight > best.weight)) best = { weight: z.weight, reps: z.reps, date: s.date };
-    }
-    return { n, best };
-  });
 }
 const mondayOf = (d) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
@@ -714,18 +687,15 @@ const VIEWS = {
 
     const mainMetric = metrics[0];
     const history = sessions.length ? sessions.map((s) => {
-      const info = prInfo.get(s.id) || { main: false, reps: [], sets: new Set() };
-      const isPR = info.main || info.reps.length > 0;
-      const wins = [];
-      if (info.main) wins.push((mainMetric === "e1rm" ? "est. 1RM" : "best reps") + " " + fmtMetric(METRICS[mainMetric].of(s), mainMetric));
-      if (info.reps.length) wins.push(info.reps.map((n) => n).join(", ") + "-rep best");
+      const isPR = prInfo.has(s.id);
+      const prSet = isPR ? prInfo.get(s.id) : -1;
       return '<div class="session' + (isPR ? " is-pr" : "") + '"><div class="session-head"><b>' + esc(fmtDate(s.date)) + (isPR ? '<span class="pr">★ PR</span>' : "") + "</b>" +
         '<div class="row"><button class="btn small" data-action="edit-session" data-id="' + esc(s.id) + '">Edit</button>' +
         '<button class="btn small danger" data-action="delete-session" data-id="' + esc(s.id) + '">Delete</button></div></div>' +
-        '<div class="session-sub">' + (mainMetric === "e1rm" ? "Est. 1RM " + esc(fmtW(sessionE1rm(s))) : esc(METRICS.reps.of(s)) + " best reps") +
-        (wins.length ? ' · <span class="pr-text">New ' + esc(wins.join(" · ")) + "</span>" : "") + "</div>" +
+        '<div class="session-sub' + (isPR ? " pr-text" : "") + '">' + (isPR ? "★ " : "") +
+        (mainMetric === "e1rm" ? "Est. 1RM " + esc(fmtW(sessionE1rm(s))) : esc(METRICS.reps.of(s)) + " best reps") + "</div>" +
         '<table class="history"><tr><th>Set</th><th>Weight</th><th>Reps</th></tr>' +
-        s.sets.map((z, i) => "<tr" + (info.sets.has(i) ? ' class="pr-set"' : "") + "><td>" + (i + 1) + "</td><td>" + esc(fmtW(z.weight)) + (info.sets.has(i) ? ' <span class="pr-text">★</span>' : "") + "</td><td>" + esc(z.reps) + "</td></tr>").join("") +
+        s.sets.map((z, i) => "<tr" + (i === prSet ? ' class="pr-set"' : "") + "><td>" + (i + 1) + "</td><td>" + esc(fmtW(z.weight)) + (i === prSet ? ' <span class="pr-text">★</span>' : "") + "</td><td>" + esc(z.reps) + "</td></tr>").join("") +
         "</table>" + (s.note ? '<div class="session-note">' + esc(s.note) + "</div>" : "") + "</div>";
     }).join("") : '<div class="empty">No workouts logged yet.</div>';
 
@@ -749,14 +719,6 @@ const VIEWS = {
     }
     progress += "</div>";
 
-    // Rep maxes: actual best weight for at least N reps.
-    let rmHTML = "";
-    if (weighted && top > 0) {
-      rmHTML = '<div class="card"><b>Personal bests by reps</b><div class="muted">Heaviest ' + (e.type === "bodyweight" ? "added weight" : "weight") + " you've lifted for at least this many reps</div>" +
-        '<table class="history"><tr><th>Reps</th><th>Weight</th><th>Date</th></tr>' +
-        repMaxes(sessions).map(({ n, best }) => "<tr><td>" + n + "</td><td>" + (best ? esc(fmtW(best.weight)) + (best.reps > n ? ' <span class="muted">× ' + best.reps + "</span>" : "") : "—") + "</td><td>" + (best ? esc(fmtDate(best.date)) : "") + "</td></tr>").join("") +
-        "</table></div>";
-    }
     const bwHint = e.type === "bodyweight" && !num(data.settings.bodyweight)
       ? '<div class="note" style="margin-top:8px">Set your body weight in Settings to get an est. 1RM for this exercise.</div>' : "";
 
@@ -772,7 +734,7 @@ const VIEWS = {
         : stat(bestReps || "—", "Best reps") + stat(sessions.reduce((a, s) => a + s.sets.length, 0), "Total sets")) +
       stat(sessions.length, "Workouts") +
       stat(last ? fmtDate(last.date) : "—", "Last trained") + "</div>" +
-      progress + rmHTML +
+      progress +
       '<div class="card"><b>History</b>' + history + "</div>";
   },
 
