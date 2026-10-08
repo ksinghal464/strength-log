@@ -72,7 +72,7 @@ function canonGroup(g, existing) {
 }
 
 /* ---------- Storage ---------- */
-const APP_VERSION = "v19"; // keep in sync with VERSION in sw.js; shown in Settings
+const APP_VERSION = "v20"; // keep in sync with VERSION in sw.js; shown in Settings
 const KEY = "strength-log-v3";
 const LEGACY_KEYS = ["strength-log-v2"];
 const SCHEMA = 5; // 5: updatedAt on items + deletion tombstones (for sync)
@@ -435,7 +435,7 @@ function series(sessions, metric) {
     const v = METRICS[metric].of(s);
     if (METRICS[metric].weight && metric !== "volume" && v <= 0) continue;
     const z = metric === "e1rm" ? bestE1rmSet(s) : null;
-    pts.push({ date: s.date, id: s.id, v, pr: pts.length > 0 && v > best, faded: !!z && z.reps > E1RM_MAX_REPS });
+    pts.push({ date: s.date, id: s.id, v, pr: v > best /* first workout is the best so far; later ones must beat it, ties don't count */, faded: !!z && z.reps > E1RM_MAX_REPS });
     best = Math.max(best, v);
   }
   pts.forEach((p, i) => { p.trend = Math.max(...pts.slice(Math.max(0, i - 2), i + 1).map((q) => q.v)); });
@@ -559,7 +559,8 @@ function prsCardHTML(byEx) {
     const e = findExercise(id);
     if (!e) continue;
     const m = primaryMetric(list);
-    for (const p of series(list, m)) if (p.pr) prs.push({ e, m, p, s: list.find((x) => x.id === p.id) });
+    // Skip each exercise's first workout here, or every new exercise would show up as a "PR".
+    for (const p of series(list, m).slice(1)) if (p.pr) prs.push({ e, m, p, s: list.find((x) => x.id === p.id) });
   }
   if (!prs.length) return "";
   prs.sort((a, b) => b.p.date.localeCompare(a.p.date));
