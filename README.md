@@ -8,12 +8,12 @@ A small offline-capable PWA for logging strength workouts. No build step, no dep
 - `sw.js` – network-first service worker (offline fallback). Bump `VERSION` if the asset list changes.
 
 ## Progress tracking
-- **Main metric:** estimated 1RM (Epley) of each workout's best set. Bodyweight exercises use body weight + added weight
-  when a body weight is set in Settings, otherwise best reps. Sets over 12 reps are drawn faded (rough estimate).
+- **Main metric:** estimated 1RM (Epley) of each workout's best set. Bodyweight exercises track best reps. Sets over 12 reps are drawn faded (rough estimate).
 - **Exercise page:** chart with workout dots, trend line (best of last 3 workouts), ★ PRs; toggle Est. 1RM / Top weight / Volume;
   range 1M–All; tap/drag the chart for exact values (date, value, best set, PR); 8-week change.
 - **Home:** this week (days trained, sets) + 12-week consistency strip, latest PR per exercise, sets per muscle group
-  over the last 7 days vs a 10–20 sets/week guide band, and a sparkline + 6-week % change on each exercise row.
+  over the last 7 days vs a 10–20 sets/week guide band, and workout history grouped by date
+  (last 3 weeks, with "Show more").
 
 ## Data
 Stored in `localStorage` under `strength-log-v3` (schema version 5). Weights are always stored in kg.

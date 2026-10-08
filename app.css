@@ -107,7 +107,6 @@ label { display: block; color: #aaa; font-size: 12px; margin: 13px 0 6px; }
 
 /* Home */
 .exercise .right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
-.spark { width: 64px; height: 24px; display: block; }
 .week-strip { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; margin-top: 6px; }
 .week-strip i { height: 16px; border-radius: 4px; background: #242424; }
 .week-strip .l1 { background: #2f5136; }

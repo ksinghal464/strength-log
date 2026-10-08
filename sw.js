@@ -1,6 +1,6 @@
 // Network-first for everything, cache as offline fallback.
 // Bump VERSION when the list of files changes.
-const VERSION = "v22"; // keep in sync with APP_VERSION in app.js
+const VERSION = "v23"; // keep in sync with APP_VERSION in app.js
 const CACHE = "strength-log-" + VERSION;
 const IMG_CACHE = "strength-log-img"; // kept across versions
 const ASSETS = [

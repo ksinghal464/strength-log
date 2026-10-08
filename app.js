@@ -72,7 +72,7 @@ function canonGroup(g, existing) {
 }
 
 /* ---------- Storage ---------- */
-const APP_VERSION = "v22"; // keep in sync with VERSION in sw.js; shown in Settings
+const APP_VERSION = "v23"; // keep in sync with VERSION in sw.js; shown in Settings
 const KEY = "strength-log-v3";
 const LEGACY_KEYS = ["strength-log-v2"];
 const SCHEMA = 5; // 5: updatedAt on items + deletion tombstones (for sync)
@@ -400,12 +400,12 @@ function lastFor(id) {
 }
 
 /* ---------- Progress metrics ----------
- * Est. 1RM (Epley) of the best set is the main strength measure. For bodyweight exercises the
- * load is body weight + added weight when a body weight is set in Settings.
+ * Est. 1RM (Epley) of the best set is the main strength measure. Bodyweight exercises track
+ * best reps instead (only added weight is recorded, so their load is unknown).
  */
 const DAY = 86400000;
 const E1RM_MAX_REPS = 12; // above this the estimate is unreliable: points are drawn faded
-const loadOf = (z, e) => z.weight + (e && e.type === "bodyweight" ? num(data.settings.bodyweight) : 0);
+const loadOf = (z) => z.weight;
 const e1rmOf = (z, e) => { const w = loadOf(z, e); return z.reps <= 1 ? w : w * (1 + z.reps / 30); };
 const exOf = (s) => findExercise(s.exerciseId);
 const bestE1rmSet = (s) => { const e = exOf(s); return s.sets.reduce((b, z) => (!b || e1rmOf(z, e) > e1rmOf(b, e) ? z : b), null); };
@@ -417,11 +417,11 @@ const METRICS = {
   volume: { label: "Volume", weight: true, of: (s) => { const e = exOf(s); return s.sets.reduce((a, z) => a + loadOf(z, e) * z.reps, 0); } },
   reps: { label: "Best reps", weight: false, of: (s) => Math.max(0, ...s.sets.map((z) => z.reps)) },
 };
-/** Weighted exercises track est. 1RM; pure bodyweight work (no load known) tracks reps. */
+/** Weighted exercises track est. 1RM; bodyweight exercises (load unknown) track reps. */
 const isWeighted = (sessions) => {
   const e = sessions.length ? exOf(sessions[0]) : null;
-  // Without a body weight, "added weight only" would make e.g. +5 kg pull-ups look weak: track reps instead.
-  if (e && e.type === "bodyweight" && !num(data.settings.bodyweight)) return false;
+  // "Added weight only" would make e.g. +5 kg pull-ups look weak: track reps instead.
+  if (e && e.type === "bodyweight") return false;
   return sessions.some((s) => sessionE1rm(s) > 0);
 };
 const metricsFor = (sessions) => (isWeighted(sessions) ? ["e1rm", "top", "volume"] : ["reps"]);
@@ -529,15 +529,6 @@ function fmtChange(ch, m) {
   const d = METRICS[m].weight ? toUnit(Math.abs(ch.diff)) + " " + unit() : Math.round(Math.abs(ch.diff)) + " reps";
   return '<span class="change ' + (up ? "up" : "down") + '">' + (up ? "▲ +" : "▼ −") + esc(d) + " (" + (up ? "+" : "−") + Math.abs(ch.pct).toFixed(0) + "%)</span>";
 }
-/** Tiny trend chart for list rows. */
-function sparkHTML(pts) {
-  const xs = pts.slice(-12);
-  if (xs.length < 2) return "";
-  const W = 64, H = 24, lo = Math.min(...xs.map((p) => p.v)), hi = Math.max(...xs.map((p) => p.v));
-  const y = (v) => (hi === lo ? H / 2 : H - 3 - ((v - lo) / (hi - lo)) * (H - 6));
-  const d = xs.map((p, i) => (i ? "L" : "M") + ((i / (xs.length - 1)) * (W - 4) + 2).toFixed(1) + " " + y(p.v).toFixed(1)).join(" ");
-  return '<svg class="spark" viewBox="0 0 ' + W + " " + H + '" aria-hidden="true"><path d="' + d + '" fill="none" stroke="#ddd" stroke-width="1.5"/></svg>';
-}
 
 function weekCardHTML() {
   const today = new Date();
@@ -603,11 +594,8 @@ function muscleCardHTML() {
 }
 
 function settingsHTML() {
-  const bw = num(data.settings.bodyweight);
   return '<div class="section"><div class="card"><b>Settings</b>' +
     '<label>Units</label><div class="seg">' + ["kg", "lb"].map((u) => '<button data-action="unit" data-id="' + u + '" class="' + (unit() === u ? "active" : "") + '">' + u + "</button>").join("") + "</div>" +
-    '<label for="bw">Body weight (' + unit() + ')</label><input id="bw" type="number" inputmode="decimal" step="any" min="0" placeholder="Optional" value="' + (bw ? toInput(bw) : "") + '">' +
-    '<div class="muted" style="margin-top:6px">Used for est. 1RM of bodyweight exercises (body weight + added weight).</div>' +
     '<label>Data</label><div class="muted" style="margin-bottom:10px">Your workouts stay on this device. Export a backup regularly.</div>' +
     '<div class="row"><button class="btn" data-action="export">Export backup</button><button class="btn" data-action="import">Import backup</button><button class="btn danger" data-action="reset">Reset app</button></div>' +
     syncSettingsHTML() +
@@ -626,19 +614,7 @@ const VIEWS = {
     if (!byEx.size) {
       return html + '<div class="card empty">No exercises logged yet.<br><br><button class="btn primary" data-action="library">Choose an exercise</button></div>' + settingsHTML();
     }
-    // Row: last workout + sparkline of the main metric + trend change over ~6 weeks.
-    const row = (e, withDate) => {
-      const list = byEx.get(e.id);
-      const m = primaryMetric(list);
-      const pts = series(list, m);
-      const ch = trendChange(pts, 42);
-      const last = lastFor(e.id);
-      return exerciseRow(e, (withDate ? fmtDate(last.date) + " · " : "") + sessionSummary(last), sparkHTML(pts) + (ch ? fmtChange(ch, m) : ""));
-    };
     html += weekCardHTML() + prsCardHTML(byEx) + muscleCardHTML();
-
-    const recentIds = [...new Set(data.sessions.slice().sort(byNewest).map((s) => s.exerciseId))].filter((id) => byEx.has(id)).slice(0, 5);
-    html += '<div class="section"><h3>Recent</h3>' + recentIds.map((id) => row(findExercise(id), true)).join("") + "</div>";
 
     // History grouped by workout date, newest first; each row shows that day's session.
     const days = new Map();
@@ -742,15 +718,12 @@ const VIEWS = {
     }
     progress += "</div>";
 
-    const bwHint = e.type === "bodyweight" && !num(data.settings.bodyweight)
-      ? '<div class="note" style="margin-top:8px">Set your body weight in Settings to get an est. 1RM for this exercise.</div>' : "";
-
     return backBtn("home", "Exercises") +
       '<div class="top"><div><h2>' + esc(e.name) + '</h2><div class="muted">' + esc(e.group) + " · " + esc(e.type) +
       (e.builtin ? "" : ' · <a href="#" data-action="custom" data-id="' + esc(e.id) + '" style="color:#aaa">edit</a>') +
       '</div></div><button class="btn primary" data-action="log" data-id="' + esc(id) + '">+ Log</button></div>' +
       heroHTML(e) +
-      '<div class="note">' + esc((TYPES[e.type] || TYPES.other).hint) + "</div>" + bwHint +
+      '<div class="note">' + esc((TYPES[e.type] || TYPES.other).hint) + "</div>" +
       '<div class="stats">' +
       (weighted
         ? stat(best1rm ? fmtW(best1rm) : "—", "Best est. 1RM") + stat(top ? fmtW(top) : "—", "Best weight")
@@ -1239,14 +1212,6 @@ for (const type of ["pointerdown", "pointermove"]) {
     if (svg) selectChartPoint(svg, ev.clientX);
   });
 }
-app.addEventListener("change", (ev) => {
-  if (ev.target.id !== "bw") return;
-  const v = ev.target.value.trim();
-  if (v !== "" && !(Number(v) >= 0)) return alert("Enter a valid body weight.");
-  Object.assign(data.settings, { bodyweight: v === "" ? 0 : fromUnit(num(v)), updatedAt: Date.now() });
-  save();
-  render();
-});
 app.addEventListener("input", (ev) => {
   if (ev.target.id === "q") { libQuery = ev.target.value; renderLibraryList(); }
 });
