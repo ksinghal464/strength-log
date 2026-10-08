@@ -72,7 +72,7 @@ function canonGroup(g, existing) {
 }
 
 /* ---------- Storage ---------- */
-const APP_VERSION = "v25"; // keep in sync with VERSION in sw.js; shown in Settings
+const APP_VERSION = "v26"; // keep in sync with VERSION in sw.js; shown in Settings
 const KEY = "strength-log-v3";
 const LEGACY_KEYS = ["strength-log-v2"];
 const SCHEMA = 5; // 5: updatedAt on items + deletion tombstones (for sync)
@@ -483,7 +483,7 @@ const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); r
 const app = document.getElementById("app");
 let view = { name: "home" };
 let libFilter = "All";
-const HOME_DAYS = 3; // workout days shown on the home page
+const HOME_DAYS = 2; // workout days shown on the home page
 let libQuery = "";
 
 /** Sessions grouped by workout date, newest first: [[date, sessions[]], ...]. */
