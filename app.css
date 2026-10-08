@@ -90,3 +90,32 @@ label { display: block; color: #aaa; font-size: 12px; margin: 13px 0 6px; }
 @keyframes flip { 0% { opacity: 0; } 50% { opacity: 1; } }
 .hero-tag { position: absolute; left: 8px; bottom: 8px; background: rgba(0,0,0,.7); color: #fff; font-size: 11px; padding: 4px 8px; border-radius: 999px; }
 @media (prefers-reduced-motion: reduce) { .hero .end { animation: none; opacity: 0; } }
+
+/* Progress */
+.card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.seg.small button { padding: 6px 9px; font-size: 12px; }
+.change { font-size: 12px; font-weight: 650; white-space: nowrap; }
+.change.up { color: #7ddc8a; }
+.change.down { color: #ff8b8b; }
+.chart .pr-star { fill: #ffd76a; font-size: 13px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 11px; color: #888; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend .dot { width: 7px; height: 7px; border-radius: 50%; background: #bbb; display: inline-block; }
+.legend .dot.faded { opacity: .35; }
+.legend .line { width: 14px; height: 2.5px; background: #fff; display: inline-block; }
+.legend .star { color: #ffd76a; }
+
+/* Home */
+.exercise .right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
+.spark { width: 64px; height: 24px; display: block; }
+.week-strip { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; margin-top: 6px; }
+.week-strip i { height: 16px; border-radius: 4px; background: #242424; }
+.week-strip .l1 { background: #2f5136; }
+.week-strip .l2 { background: #4f8a5b; }
+.week-strip .l3 { background: #7ddc8a; }
+.mrow { display: grid; grid-template-columns: 92px 1fr 26px; gap: 8px; align-items: center; margin-top: 9px; font-size: 13px; }
+.mrow span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ccc; }
+.mrow b { text-align: right; }
+.mbar { position: relative; height: 10px; background: #222; border-radius: 5px; overflow: hidden; }
+.mband { position: absolute; top: 0; bottom: 0; background: rgba(125, 220, 138, .2); }
+.mfill { position: absolute; left: 0; top: 2px; bottom: 2px; background: #fff; border-radius: 4px; }

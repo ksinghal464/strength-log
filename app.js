@@ -220,7 +220,7 @@ function migrate(input) {
     .map(([id, t]) => [id, num(t)]).filter(([id, t]) => t > 0 && !id.startsWith("b:")));
   return {
     schemaVersion: SCHEMA,
-    settings: { unit: settings.unit === "lb" ? "lb" : "kg", updatedAt: num(settings.updatedAt) },
+    settings: { unit: settings.unit === "lb" ? "lb" : "kg", bodyweight: num(settings.bodyweight), updatedAt: num(settings.updatedAt) },
     deleted: { sessions: stamps(del.sessions), exercises: stamps(del.exercises) },
     exercises: [...BUILTINS.map((b) => ({ ...b })), ...customs],
     sessions,
@@ -339,7 +339,7 @@ function toCSV(d) {
     const e = ex.get(s.exerciseId) || { name: s.exerciseId, group: "", type: "" };
     s.sets.forEach((z, i) => rows.push([
       s.date, e.name, e.group, e.type, i + 1, z.weight, r1(z.weight / KG_PER_LB), z.reps,
-      r1(e1rm(z)), r1(z.weight * z.reps), i === 0 ? s.note : "",
+      r1(z.reps <= 1 ? z.weight : z.weight * (1 + z.reps / 30)), r1(z.weight * z.reps), i === 0 ? s.note : "",
     ]));
   }
   return rows.map((row) => row.map(cell).join(",")).join("\r\n") + "\r\n";
@@ -376,9 +376,8 @@ const fromUnit = (v) => Math.round((unit() === "lb" ? v * KG_PER_LB : v) * 1000)
 /** kg -> form value: 2 decimals so small plates (1.25 kg) survive */
 const toInput = (kg) => Math.round((unit() === "lb" ? kg / KG_PER_LB : kg) * 100) / 100;
 const fmtW = (kg) => toUnit(kg) + " " + unit();
-const e1rm = (z) => (z.reps <= 1 ? z.weight : z.weight * (1 + z.reps / 30));
 const bestSet = (sets) => sets.reduce((b, z) => (!b || z.weight > b.weight || (z.weight === b.weight && z.reps > b.reps) ? z : b), null);
-const sessionE1rm = (s) => Math.max(0, ...s.sets.map(e1rm));
+
 const fmtSet = (z) => (z.weight ? fmtW(z.weight) + " × " : "") + z.reps + (z.weight ? "" : " reps");
 const sessionSummary = (s) => fmtSet(bestSet(s.sets));
 const byNewest = (a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt;
@@ -399,17 +398,79 @@ function lastFor(id) {
   return latestCache.get(id);
 }
 
-/** Session ids that set a new best estimated 1RM vs all earlier sessions of that exercise. */
-function prSessionIds(sessions) {
-  const ids = new Set();
+/* ---------- Progress metrics ----------
+ * Est. 1RM (Epley) of the best set is the main strength measure. For bodyweight exercises the
+ * load is body weight + added weight when a body weight is set in Settings.
+ */
+const DAY = 86400000;
+const E1RM_MAX_REPS = 12; // above this the estimate is unreliable: points are drawn faded
+const loadOf = (z, e) => z.weight + (e && e.type === "bodyweight" ? num(data.settings.bodyweight) : 0);
+const e1rmOf = (z, e) => { const w = loadOf(z, e); return z.reps <= 1 ? w : w * (1 + z.reps / 30); };
+const exOf = (s) => findExercise(s.exerciseId);
+const bestE1rmSet = (s) => { const e = exOf(s); return s.sets.reduce((b, z) => (!b || e1rmOf(z, e) > e1rmOf(b, e) ? z : b), null); };
+const sessionE1rm = (s) => { const z = bestE1rmSet(s); return z ? e1rmOf(z, exOf(s)) : 0; };
+
+const METRICS = {
+  e1rm: { label: "Est. 1RM", weight: true, of: sessionE1rm },
+  top: { label: "Top weight", weight: true, of: (s) => Math.max(0, ...s.sets.map((z) => z.weight)) },
+  volume: { label: "Volume", weight: true, of: (s) => { const e = exOf(s); return s.sets.reduce((a, z) => a + loadOf(z, e) * z.reps, 0); } },
+  reps: { label: "Best reps", weight: false, of: (s) => Math.max(0, ...s.sets.map((z) => z.reps)) },
+};
+/** Weighted exercises track est. 1RM; pure bodyweight work (no load known) tracks reps. */
+const isWeighted = (sessions) => {
+  const e = sessions.length ? exOf(sessions[0]) : null;
+  // Without a body weight, "added weight only" would make e.g. +5 kg pull-ups look weak: track reps instead.
+  if (e && e.type === "bodyweight" && !num(data.settings.bodyweight)) return false;
+  return sessions.some((s) => sessionE1rm(s) > 0);
+};
+const metricsFor = (sessions) => (isWeighted(sessions) ? ["e1rm", "top", "volume"] : ["reps"]);
+const primaryMetric = (sessions) => metricsFor(sessions)[0];
+
+/** Oldest-first points for a metric, with a trend (best of the last 3 sessions) and PR flags. */
+function series(sessions, metric) {
+  const pts = [];
   let best = -1;
-  sessions.slice().sort(byOldest).forEach((s, i) => {
-    const v = sessionE1rm(s);
-    if (i > 0 && v > best) ids.add(s.id);
+  for (const s of sessions.slice().sort(byOldest)) {
+    const v = METRICS[metric].of(s);
+    if (METRICS[metric].weight && metric !== "volume" && v <= 0) continue;
+    const z = metric === "e1rm" ? bestE1rmSet(s) : null;
+    pts.push({ date: s.date, id: s.id, v, pr: pts.length > 0 && v > best, faded: !!z && z.reps > E1RM_MAX_REPS });
     best = Math.max(best, v);
-  });
-  return ids;
+  }
+  pts.forEach((p, i) => { p.trend = Math.max(...pts.slice(Math.max(0, i - 2), i + 1).map((q) => q.v)); });
+  return pts;
 }
+/** Session ids that set a new best in the exercise's main metric. */
+function prSessionIds(sessions) {
+  if (!sessions.length) return new Set();
+  return new Set(series(sessions, primaryMetric(sessions)).filter((p) => p.pr).map((p) => p.id));
+}
+/** Trend change over ~days: { diff, pct, since } or null when there isn't enough history. */
+function trendChange(pts, days) {
+  if (pts.length < 2) return null;
+  const last = pts[pts.length - 1];
+  const cutoff = localDate(new Date(Date.parse(last.date + "T00:00:00") - days * DAY));
+  let base = null;
+  for (const p of pts) if (p.date <= cutoff) base = p;
+  if (!base) {
+    base = pts[0];
+    if (Date.parse(last.date) - Date.parse(base.date) < 14 * DAY) return null; // under 2 weeks: too early to tell
+  }
+  if (!base.trend) return null;
+  return { diff: last.trend - base.trend, pct: ((last.trend - base.trend) / base.trend) * 100, since: base.date };
+}
+/** Best actual weight lifted for at least N reps (a 100×5 also counts as a 3-rep best). */
+function repMaxes(sessions, targets = [1, 3, 5, 8, 10, 12]) {
+  return targets.map((n) => {
+    let best = null;
+    for (const s of sessions.slice().sort(byOldest)) for (const z of s.sets) { // oldest first: date = first time achieved
+      if (z.reps >= n && (!best || z.weight > best.weight)) best = { weight: z.weight, reps: z.reps, date: s.date };
+    }
+    return { n, best };
+  });
+}
+const mondayOf = (d) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 
 /* ---------- Rendering ---------- */
 const app = document.getElementById("app");
@@ -441,48 +502,140 @@ function render() {
   if (view.name === "library") renderLibraryList();
 }
 
-function exerciseRow(e, sub) {
+function exerciseRow(e, sub, right = "") {
   return '<button class="exercise" data-action="open" data-id="' + esc(e.id) + '">' + thumbHTML(e) +
-    '<div class="info"><b>' + esc(e.name) + "</b><small>" + esc(sub) + "</small></div><span>›</span></button>";
+    '<div class="info"><b>' + esc(e.name) + "</b><small>" + esc(sub) + "</small></div>" +
+    (right ? '<div class="right">' + right + "</div>" : "<span>›</span>") + "</button>";
+}
+
+/** Value in the metric's display unit. */
+function fmtMetric(v, m) {
+  if (!METRICS[m].weight) return Math.round(v) + " reps";
+  if (m === "volume") return Math.round(toUnit(v)).toLocaleString() + " " + unit();
+  return fmtW(v);
+}
+function fmtChange(ch, m) {
+  const up = ch.diff >= 0;
+  const d = METRICS[m].weight ? toUnit(Math.abs(ch.diff)) + " " + unit() : Math.round(Math.abs(ch.diff)) + " reps";
+  return '<span class="change ' + (up ? "up" : "down") + '">' + (up ? "▲ +" : "▼ −") + esc(d) + " (" + (up ? "+" : "−") + Math.abs(ch.pct).toFixed(0) + "%)</span>";
+}
+/** Tiny trend chart for list rows. */
+function sparkHTML(pts) {
+  const xs = pts.slice(-12);
+  if (xs.length < 2) return "";
+  const W = 64, H = 24, lo = Math.min(...xs.map((p) => p.v)), hi = Math.max(...xs.map((p) => p.v));
+  const y = (v) => (hi === lo ? H / 2 : H - 3 - ((v - lo) / (hi - lo)) * (H - 6));
+  const d = xs.map((p, i) => (i ? "L" : "M") + ((i / (xs.length - 1)) * (W - 4) + 2).toFixed(1) + " " + y(p.v).toFixed(1)).join(" ");
+  return '<svg class="spark" viewBox="0 0 ' + W + " " + H + '" aria-hidden="true"><path d="' + d + '" fill="none" stroke="#ddd" stroke-width="1.5"/></svg>';
+}
+
+function weekCardHTML() {
+  const today = new Date();
+  const mon = mondayOf(today);
+  const monISO = localDate(mon);
+  const thisWeek = data.sessions.filter((s) => s.date >= monISO);
+  const days = new Set(thisWeek.map((s) => s.date)).size;
+  const sets = thisWeek.reduce((a, s) => a + s.sets.length, 0);
+  const trained = new Set(data.sessions.map((s) => s.date));
+  let strip = "";
+  for (let k = 11; k >= 0; k--) {
+    const start = addDays(mon, -7 * k);
+    let c = 0;
+    for (let d = 0; d < 7; d++) if (trained.has(localDate(addDays(start, d)))) c++;
+    strip += '<i class="l' + Math.min(c, 3) + '" title="Week of ' + esc(fmtDate(localDate(start))) + ": " + c + ' training day(s)"></i>';
+  }
+  return '<div class="card"><b>This week</b>' +
+    '<div class="stats">' + stat(days, "Days trained") + stat(sets, "Sets") + "</div>" +
+    '<div class="muted" style="margin-top:12px">Training days per week · last 12 weeks</div><div class="week-strip">' + strip + "</div></div>";
+}
+
+function prsCardHTML(byEx) {
+  const prs = [];
+  for (const [id, list] of byEx) {
+    const e = findExercise(id);
+    if (!e) continue;
+    const m = primaryMetric(list);
+    for (const p of series(list, m)) if (p.pr) prs.push({ e, m, p, s: list.find((x) => x.id === p.id) });
+  }
+  if (!prs.length) return "";
+  prs.sort((a, b) => b.p.date.localeCompare(a.p.date));
+  const seen = new Set(); // latest PR per exercise
+  const latest = prs.filter((x) => !seen.has(x.e.id) && seen.add(x.e.id));
+  return '<div class="section"><h3>Recent PRs</h3>' + latest.slice(0, 5).map(({ e, m, p, s }) => {
+    const z = m === "e1rm" ? bestE1rmSet(s) : null;
+    const sub = (z ? fmtSet(z) + " · est. 1RM " + fmtMetric(p.v, m) : fmtMetric(p.v, m)) + " · " + fmtDate(p.date);
+    return exerciseRow(e, "★ " + sub);
+  }).join("") + "</div>";
+}
+
+/** Sets per muscle group in the last 7 days, with a 10–20 sets/week guide band. */
+function muscleCardHTML() {
+  const today = new Date();
+  const from7 = localDate(addDays(today, -6)), from28 = localDate(addDays(today, -27));
+  const count = new Map();
+  for (const s of data.sessions) {
+    if (s.date < from28) continue;
+    const e = exOf(s);
+    if (!e) continue;
+    if (!count.has(e.group)) count.set(e.group, 0);
+    if (s.date >= from7) count.set(e.group, count.get(e.group) + s.sets.length);
+  }
+  if (!count.size) return "";
+  const rows = [...count].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const max = Math.max(22, ...rows.map(([, n]) => n + 2));
+  const pct = (n) => ((n / max) * 100).toFixed(1) + "%";
+  return '<div class="card"><b>Sets per muscle group</b><div class="muted">Last 7 days · shaded band = 10–20 sets, a common weekly target for muscle growth</div>' +
+    rows.map(([g, n]) =>
+      '<div class="mrow"><span>' + esc(g) + '</span><div class="mbar"><div class="mband" style="left:' + pct(10) + ";width:" + pct(10) + '"></div>' +
+      '<div class="mfill" style="width:' + pct(n) + '"></div></div><b>' + n + "</b></div>"
+    ).join("") + "</div>";
+}
+
+function settingsHTML() {
+  const bw = num(data.settings.bodyweight);
+  return '<div class="section"><div class="card"><b>Settings</b>' +
+    '<label>Units</label><div class="seg">' + ["kg", "lb"].map((u) => '<button data-action="unit" data-id="' + u + '" class="' + (unit() === u ? "active" : "") + '">' + u + "</button>").join("") + "</div>" +
+    '<label for="bw">Body weight (' + unit() + ')</label><input id="bw" type="number" inputmode="decimal" step="any" min="0" placeholder="Optional" value="' + (bw ? toInput(bw) : "") + '">' +
+    '<div class="muted" style="margin-top:6px">Used for est. 1RM of bodyweight exercises (body weight + added weight).</div>' +
+    '<label>Data</label><div class="muted" style="margin-bottom:10px">Your workouts stay on this device. Export a backup regularly.</div>' +
+    '<div class="row"><button class="btn" data-action="export">Export backup</button><button class="btn" data-action="import">Import backup</button><button class="btn danger" data-action="reset">Reset app</button></div>' +
+    syncSettingsHTML() + "</div></div>";
 }
 
 const VIEWS = {
   home() {
-    const used = new Set(data.sessions.map((s) => s.exerciseId));
-    const exercises = data.exercises.filter((e) => used.has(e.id));
     let html = '<div class="top"><div><h1>Strength Log</h1><div class="muted">Log. Compare. Get stronger.</div></div><button class="btn" data-action="library">+ Exercise</button></div>';
-
-    if (!exercises.length) {
-      html += '<div class="card empty">No exercises logged yet.<br><br><button class="btn primary" data-action="library">Choose an exercise</button></div>';
-    } else {
-      const recent = data.sessions.slice().sort(byNewest);
-      const recentIds = [...new Set(recent.map((s) => s.exerciseId))].slice(0, 5);
-      html += '<div class="section"><h3>Recent</h3>';
-      for (const id of recentIds) {
-        const e = findExercise(id); if (!e) continue;
-        const s = lastFor(id);
-        html += exerciseRow(e, fmtDate(s.date) + " · " + sessionSummary(s));
-      }
-      html += "</div>";
-
-      const groups = new Map();
-      for (const e of exercises) {
-        if (!groups.has(e.group)) groups.set(e.group, []);
-        groups.get(e.group).push(e);
-      }
-      for (const [g, list] of groups) {
-        html += '<div class="section"><h3>' + esc(g) + "</h3>";
-        for (const e of list) html += exerciseRow(e, sessionSummary(lastFor(e.id)));
-        html += "</div>";
-      }
+    const byEx = new Map();
+    for (const s of data.sessions) {
+      if (!findExercise(s.exerciseId)) continue;
+      if (!byEx.has(s.exerciseId)) byEx.set(s.exerciseId, []);
+      byEx.get(s.exerciseId).push(s);
     }
+    if (!byEx.size) {
+      return html + '<div class="card empty">No exercises logged yet.<br><br><button class="btn primary" data-action="library">Choose an exercise</button></div>' + settingsHTML();
+    }
+    // Row: last workout + sparkline of the main metric + trend change over ~6 weeks.
+    const row = (e, withDate) => {
+      const list = byEx.get(e.id);
+      const m = primaryMetric(list);
+      const pts = series(list, m);
+      const ch = trendChange(pts, 42);
+      const last = lastFor(e.id);
+      return exerciseRow(e, (withDate ? fmtDate(last.date) + " · " : "") + sessionSummary(last), sparkHTML(pts) + (ch ? fmtChange(ch, m) : ""));
+    };
+    html += weekCardHTML() + prsCardHTML(byEx) + muscleCardHTML();
 
-    html += '<div class="section"><div class="card"><b>Settings</b>' +
-      '<label>Units</label><div class="seg">' + ["kg", "lb"].map((u) => '<button data-action="unit" data-id="' + u + '" class="' + (unit() === u ? "active" : "") + '">' + u + "</button>").join("") + "</div>" +
-      '<label>Data</label><div class="muted" style="margin-bottom:10px">Your workouts stay on this device. Export a backup regularly.</div>' +
-      '<div class="row"><button class="btn" data-action="export">Export backup</button><button class="btn" data-action="import">Import backup</button><button class="btn danger" data-action="reset">Reset app</button></div>' +
-      syncSettingsHTML() + "</div></div>";
-    return html;
+    const recentIds = [...new Set(data.sessions.slice().sort(byNewest).map((s) => s.exerciseId))].filter((id) => byEx.has(id)).slice(0, 5);
+    html += '<div class="section"><h3>Recent</h3>' + recentIds.map((id) => row(findExercise(id), true)).join("") + "</div>";
+
+    const groups = new Map();
+    for (const e of data.exercises) {
+      if (!byEx.has(e.id)) continue;
+      if (!groups.has(e.group)) groups.set(e.group, []);
+      groups.get(e.group).push(e);
+    }
+    for (const [g, list] of groups) html += '<div class="section"><h3>' + esc(g) + "</h3>" + list.map((e) => row(e, false)).join("") + "</div>";
+    return html + settingsHTML();
   },
 
   library() {
@@ -516,12 +669,16 @@ const VIEWS = {
     if (!e) return notFound();
     const sessions = sessionsFor(id).sort(byNewest);
     const prs = prSessionIds(sessions);
-    let top = 0, best1rm = 0, volume = 0;
-    for (const s of sessions) for (const z of s.sets) {
-      top = Math.max(top, z.weight);
-      best1rm = Math.max(best1rm, e1rm(z));
-      volume += z.weight * z.reps;
+    const metrics = sessions.length ? metricsFor(sessions) : ["e1rm"];
+    const metric = metrics.includes(chartMetric) ? chartMetric : metrics[0];
+    const weighted = metrics[0] === "e1rm";
+    let top = 0, best1rm = 0, bestReps = 0;
+    for (const s of sessions) {
+      top = Math.max(top, METRICS.top.of(s));
+      best1rm = Math.max(best1rm, sessionE1rm(s));
+      bestReps = Math.max(bestReps, METRICS.reps.of(s));
     }
+    const last = sessions[0];
 
     const history = sessions.length ? sessions.map((s) =>
       '<div class="session"><div class="session-head"><b>' + esc(fmtDate(s.date)) + (prs.has(s.id) ? '<span class="pr">PR</span>' : "") + "</b>" +
@@ -532,22 +689,50 @@ const VIEWS = {
       "</table>" + (s.note ? '<div class="session-note">' + esc(s.note) + "</div>" : "") + "</div>"
     ).join("") : '<div class="empty">No workouts logged yet.</div>';
 
+    // Progress chart: metric toggle, time range, trend change.
+    const all = series(sessions, metric);
+    const days = RANGES[chartRange];
+    const cutoff = days ? localDate(new Date(Date.now() - days * DAY)) : "";
+    const pts = all.filter((p) => p.date >= cutoff);
+    const ch = trendChange(series(sessions, metrics[0]), 56);
+    let progress = '<div class="card"><div class="card-head"><b>Progress</b>' +
+      (metrics.length > 1 ? '<div class="seg small">' + metrics.map((m) => '<button data-action="metric" data-id="' + m + '" class="' + (m === metric ? "active" : "") + '">' + METRICS[m].label + "</button>").join("") + "</div>" : "") +
+      "</div>";
+    if (ch) progress += '<div class="muted" style="margin-top:6px">' + METRICS[metrics[0]].label + " " + fmtChange(ch, metrics[0]) + " since " + esc(fmtDate(ch.since)) + "</div>";
+    if (all.length < 2) {
+      progress += '<div class="muted" style="margin-top:6px">' + (sessions.length ? "Log one more workout" : "Log at least two workouts") + " to see your progress chart.</div>";
+    } else {
+      progress += (pts.length >= 2 ? chart(pts, metric) : '<div class="empty">Not enough workouts in this range.</div>') +
+        '<div class="legend"><span><i class="dot"></i>workout</span><span><i class="line"></i>trend (best of last 3)</span><span class="star">★ PR</span>' +
+        (metric === "e1rm" && all.some((p) => p.faded) ? '<span><i class="dot faded"></i>&gt;' + E1RM_MAX_REPS + " reps (rough estimate)</span>" : "") + "</div>" +
+        '<div class="chips" style="margin-top:10px">' + Object.keys(RANGES).map((r) => '<button class="chip' + (r === chartRange ? " active" : "") + '" data-action="range" data-id="' + r + '">' + r + "</button>").join("") + "</div>";
+    }
+    progress += "</div>";
+
+    // Rep maxes: actual best weight for at least N reps.
+    let rmHTML = "";
+    if (weighted && top > 0) {
+      rmHTML = '<div class="card"><b>Rep records</b><div class="muted">Heaviest ' + (e.type === "bodyweight" ? "added weight" : "weight") + " lifted for at least N reps</div>" +
+        '<table class="history"><tr><th>Reps</th><th>Weight</th><th>Date</th></tr>' +
+        repMaxes(sessions).map(({ n, best }) => "<tr><td>" + n + "</td><td>" + (best ? esc(fmtW(best.weight)) + (best.reps > n ? ' <span class="muted">× ' + best.reps + "</span>" : "") : "—") + "</td><td>" + (best ? esc(fmtDate(best.date)) : "") + "</td></tr>").join("") +
+        "</table></div>";
+    }
+    const bwHint = e.type === "bodyweight" && !num(data.settings.bodyweight)
+      ? '<div class="note" style="margin-top:8px">Set your body weight in Settings to get an est. 1RM for this exercise.</div>' : "";
+
     return backBtn("home", "Exercises") +
       '<div class="top"><div><h2>' + esc(e.name) + '</h2><div class="muted">' + esc(e.group) + " · " + esc(e.type) +
       (e.builtin ? "" : ' · <a href="#" data-action="custom" data-id="' + esc(e.id) + '" style="color:#aaa">edit</a>') +
       '</div></div><button class="btn primary" data-action="log" data-id="' + esc(id) + '">+ Log</button></div>' +
       heroHTML(e) +
-      '<div class="note">' + esc((TYPES[e.type] || TYPES.other).hint) + "</div>" +
+      '<div class="note">' + esc((TYPES[e.type] || TYPES.other).hint) + "</div>" + bwHint +
       '<div class="stats">' +
-      stat(top ? fmtW(top) : "—", "Best weight") +
-      stat(best1rm ? fmtW(round1(best1rm)) : "—", "Est. 1RM") +
-      stat(volume ? Math.round(toUnit(volume)).toLocaleString() + " " + unit() : "—", "Total volume") +
-      stat(sessions.length, "Workouts") + "</div>" +
-      '<div class="card"><b>Progress</b><div class="muted">' +
-      (sessions.length > 1
-        ? (best1rm ? "Best est. 1RM per workout" : "Best reps per workout") + "</div>" + chart(sessions)
-        : (sessions.length ? "Log one more workout" : "Log at least two workouts") + " to see your progress chart.</div>") +
-      "</div>" +
+      (weighted
+        ? stat(best1rm ? fmtW(best1rm) : "—", "Best est. 1RM") + stat(top ? fmtW(top) : "—", "Best weight")
+        : stat(bestReps || "—", "Best reps") + stat(sessions.reduce((a, s) => a + s.sets.length, 0), "Total sets")) +
+      stat(sessions.length, "Workouts") +
+      stat(last ? fmtDate(last.date) : "—", "Last trained") + "</div>" +
+      progress + rmHTML +
       '<div class="card"><b>History</b>' + history + "</div>";
   },
 
@@ -609,29 +794,37 @@ function renumberSets() {
   document.querySelectorAll("#sets .set > span").forEach((el, i) => { el.textContent = i + 1; });
 }
 
-function chart(sessions) {
-  // One metric for the whole chart: est. 1RM if any session is weighted, otherwise reps.
-  const weighted = sessions.some((s) => sessionE1rm(s) > 0);
-  const pts = sessions.slice().sort(byOldest)
-    .filter((s) => !weighted || sessionE1rm(s) > 0)
-    .map((s) => ({ date: s.date, v: weighted ? sessionE1rm(s) : Math.max(...s.sets.map((z) => z.reps)), isWeight: weighted }));
-  const W = 600, H = 220, P = { l: 40, r: 12, t: 14, b: 26 };
-  const vals = pts.map((p) => (p.isWeight ? toUnit(p.v) : p.v));
+const RANGES = { "1M": 30, "3M": 91, "6M": 182, "1Y": 365, All: 0 };
+let chartMetric = null; // null = exercise's main metric
+let chartRange = "All";
+
+/** Progress chart: grey line through workouts, white trend line, gold ★ on PRs, faded low-confidence points. */
+function chart(pts, metric) {
+  const toV = (v) => (METRICS[metric].weight ? toUnit(v) : v);
+  const W = 360, H = 200, P = { l: 38, r: 10, t: 14, b: 24 }; // ~phone width, so text isn't scaled down
+  const vals = pts.map((p) => toV(p.v)), trend = pts.map((p) => toV(p.trend));
   let lo = Math.min(...vals), hi = Math.max(...vals);
   if (hi === lo) { hi += 1; lo = Math.max(0, lo - 1); }
-  const pad = (hi - lo) * 0.1; lo = Math.max(0, lo - pad); hi += pad;
+  const pad = (hi - lo) * 0.12; lo = Math.max(0, lo - pad); hi += pad;
   const t0 = Date.parse(pts[0].date), t1 = Date.parse(pts[pts.length - 1].date);
   const x = (d, i) => P.l + (W - P.l - P.r) * (t1 > t0 ? (Date.parse(d) - t0) / (t1 - t0) : i / Math.max(1, pts.length - 1));
   const y = (v) => P.t + (H - P.t - P.b) * (1 - (v - lo) / (hi - lo));
-  const xy = pts.map((p, i) => [x(p.date, i), y(vals[i])]);
-  const path = xy.map(([a, b], i) => (i ? "L" : "M") + a.toFixed(1) + " " + b.toFixed(1)).join(" ");
+  const path = (vs) => vs.map((v, i) => (i ? "L" : "M") + x(pts[i].date, i).toFixed(1) + " " + y(v).toFixed(1)).join(" ");
+  const label = (v) => (hi - lo >= 30 ? Math.round(v) : round1(v));
   const grid = [lo, (lo + hi) / 2, hi].map((v) =>
-    '<line x1="' + P.l + '" x2="' + (W - P.r) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#262626"/><text x="' + (P.l - 6) + '" y="' + (y(v) + 3) + '" text-anchor="end">' + round1(v) + "</text>"
+    '<line x1="' + P.l + '" x2="' + (W - P.r) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#262626"/><text x="' + (P.l - 6) + '" y="' + (y(v) + 3) + '" text-anchor="end">' + label(v) + "</text>"
   ).join("");
-  const labels = '<text x="' + P.l + '" y="' + (H - 8) + '">' + esc(fmtDate(pts[0].date)) + '</text><text x="' + (W - P.r) + '" y="' + (H - 8) + '" text-anchor="end">' + esc(fmtDate(pts[pts.length - 1].date)) + "</text>";
-  const dots = xy.map(([a, b]) => '<circle cx="' + a + '" cy="' + b + '" r="3" fill="#fff"/>').join("");
-  return '<svg class="chart" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Progress chart">' + grid + labels +
-    '<path d="' + path + '" fill="none" stroke="#fff" stroke-width="2"/>' + dots + "</svg>";
+  const labels = '<text x="' + P.l + '" y="' + (H - 6) + '">' + esc(fmtDate(pts[0].date)) + '</text><text x="' + (W - P.r) + '" y="' + (H - 6) + '" text-anchor="end">' + esc(fmtDate(pts[pts.length - 1].date)) + "</text>";
+  const marks = pts.map((p, i) => {
+    const cx = x(p.date, i).toFixed(1), cy = y(vals[i]).toFixed(1);
+    const tip = "<title>" + esc(fmtDate(p.date) + ": " + fmtMetric(p.v, metric) + (p.pr ? " (PR)" : "")) + "</title>";
+    return p.pr
+      ? '<text class="pr-star" x="' + cx + '" y="' + (+cy + 5) + '" text-anchor="middle"' + (p.faded ? ' opacity=".4"' : "") + ">★" + tip + "</text>"
+      : '<circle cx="' + cx + '" cy="' + cy + '" r="3.5" fill="#bbb"' + (p.faded ? ' opacity=".35"' : "") + ">" + tip + "</circle>";
+  }).join("");
+  return '<svg class="chart" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + esc(METRICS[metric].label) + ' progress chart">' + grid + labels +
+    '<path d="' + path(vals) + '" fill="none" stroke="#555" stroke-width="1.5"/>' +
+    '<path d="' + path(trend) + '" fill="none" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/>' + marks + "</svg>";
 }
 
 function renderLibraryList() {
@@ -655,6 +848,8 @@ const ACTIONS = {
   custom: (id) => go("custom", { id: id || null }),
   filter: (g) => { libFilter = g; go("library"); },
   reload: () => location.reload(),
+  metric: (m) => { chartMetric = m; render(); },
+  range: (r) => { chartRange = r; render(); },
   "sync-on": async () => {
     const token = document.getElementById("gtoken").value.trim();
     if (!token) return alert("Paste a GitHub token first.");
@@ -935,6 +1130,14 @@ app.addEventListener("click", (ev) => {
   if (!fn) return;
   ev.preventDefault();
   fn(el.dataset.id || "", el);
+});
+app.addEventListener("change", (ev) => {
+  if (ev.target.id !== "bw") return;
+  const v = ev.target.value.trim();
+  if (v !== "" && !(Number(v) >= 0)) return alert("Enter a valid body weight.");
+  Object.assign(data.settings, { bodyweight: v === "" ? 0 : fromUnit(num(v)), updatedAt: Date.now() });
+  save();
+  render();
 });
 app.addEventListener("input", (ev) => {
   if (ev.target.id === "q") { libQuery = ev.target.value; renderLibraryList(); }
