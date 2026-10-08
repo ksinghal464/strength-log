@@ -12,7 +12,8 @@ Stored in `localStorage` under `strength-log-v3` (schema version 4). Weights are
 
 Safety copies kept in the same browser:
 - `strength-log-premigrate-v*` – original data before a schema migration
-- `strength-log-autobackup` – data before the last import/reset
+- `strength-log-autobackup-<timestamp>` – data before each import/reset (last 3 kept)
+- `strength-log-newer-v*` – data written by a newer app version (shown read-only, never overwritten)
 - `strength-log-corrupt-*` – unreadable data (the app never deletes it)
 
 Use **Export backup** regularly; **Import** offers Merge or Replace.

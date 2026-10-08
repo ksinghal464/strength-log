@@ -23,6 +23,7 @@ h3 { margin-bottom: 4px; }
 .empty { padding: 24px; text-align: center; color: #888; }
 .note { padding: 11px; background: #191919; border-radius: 9px; color: #aaa; font-size: 12px; line-height: 1.5; }
 .banner { background: #3a1d1d; border: 1px solid #6b2b2b; color: #ffb4b4; border-radius: 12px; padding: 12px; margin-bottom: 14px; font-size: 13px; }
+.banner.info { background: #16243a; border-color: #2b4a6b; color: #b4d4ff; }
 
 .btn, .chip, .seg button { background: #181818; cursor: pointer; }
 .btn {

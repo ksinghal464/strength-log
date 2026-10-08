@@ -65,6 +65,12 @@ const BUILTINS = Object.entries(CATALOG).flatMap(([group, list]) =>
 );
 const BUILTIN_BY_NAME = new Map(BUILTINS.map((e) => [e.name.toLowerCase(), e]));
 
+/** Reuse an existing group's spelling when only the case differs ("chest" -> "Chest"). */
+function canonGroup(g, existing) {
+  const v = String(g || "").trim() || "Other";
+  return existing.find((x) => x.toLowerCase() === v.toLowerCase()) || v;
+}
+
 /* ---------- Storage ---------- */
 const KEY = "strength-log-v3";
 const LEGACY_KEYS = ["strength-log-v2"];
@@ -72,8 +78,14 @@ const SCHEMA = 4;
 const KG_PER_LB = 0.45359237;
 
 let data;
-let storageBroken = false;
+let storageBroken = false;  // true => never write to KEY (unreadable or newer-schema data)
+let brokenReason = "";      // "corrupt" | "newer"
+let brokenRaw = null;       // the untouched stored JSON when storageBroken
+let saveError = "";         // last failed write (e.g. quota exceeded)
+let updateReady = false;    // a new service worker took over this page
 let pendingImport = null;
+const AUTOBACKUP_PREFIX = "strength-log-autobackup-";
+const AUTOBACKUP_KEEP = 3;
 
 function load() {
   let raw = null;
@@ -89,6 +101,15 @@ function load() {
     if (raw == null) return migrate({});
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") throw new Error("not an object");
+    if ((parsed.schemaVersion || 0) > SCHEMA) {
+      // Written by a newer app version: show it read-only, never overwrite fields we don't know.
+      storageBroken = true;
+      brokenReason = "newer";
+      brokenRaw = raw;
+      const bk = "strength-log-newer-v" + parsed.schemaVersion;
+      try { if (localStorage.getItem(bk) == null) localStorage.setItem(bk, raw); } catch (_) {}
+      return migrate(parsed);
+    }
     if ((parsed.schemaVersion || 0) < SCHEMA || fromLegacy) {
       const bk = "strength-log-premigrate-v" + (parsed.schemaVersion || 3);
       if (localStorage.getItem(bk) == null) localStorage.setItem(bk, raw);
@@ -97,6 +118,8 @@ function load() {
   } catch (err) {
     // Never destroy data we couldn't read. Keep a copy and stop saving.
     storageBroken = true;
+    brokenReason = "corrupt";
+    brokenRaw = raw;
     try { if (raw != null) localStorage.setItem("strength-log-corrupt-" + Date.now(), raw); } catch (_) {}
     return migrate({});
   }
@@ -107,13 +130,21 @@ function save() {
   if (storageBroken) return;
   try {
     localStorage.setItem(KEY, JSON.stringify(data));
+    saveError = "";
   } catch (err) {
-    alert("Could not save: " + err.message);
+    // Shown as a persistent banner (see render) instead of an alert on every save.
+    saveError = err && err.name === "QuotaExceededError"
+      ? "Browser storage is full."
+      : "Could not save: " + (err && err.message);
   }
 }
 
 const num = (v) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : 0; };
-const isDate = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+function isDate(s) {
+  if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(s + "T00:00:00");
+  return !isNaN(d) && localDate(d) === s;
+}
 
 /** Normalises any older/foreign data shape into the current schema. Pure: returns a new object. */
 function migrate(input) {
@@ -142,7 +173,7 @@ function migrate(input) {
     if (seenCustomNames.has(key)) { idMap.set(oldId, seenCustomNames.get(key)); continue; }
     const id = oldId.startsWith("c") && !customIds.has(oldId) ? oldId : uid("c" + slug(name) + "-");
     customIds.add(id);
-    const group = String(e.group || "Other").trim() || "Other";
+    const group = canonGroup(e.group, [...Object.keys(CATALOG), ...customs.map((c) => c.group)]);
     customs.push({
       id, name, group,
       type: TYPES[e.type] ? e.type : "other",
@@ -203,6 +234,8 @@ const round1 = (n) => Math.round(n * 10) / 10;
 const toUnit = (kg) => round1(unit() === "lb" ? kg / KG_PER_LB : kg);
 /** display-unit input -> kg (stored with 3 decimals so round-trips are stable) */
 const fromUnit = (v) => Math.round((unit() === "lb" ? v * KG_PER_LB : v) * 1000) / 1000;
+/** kg -> form value: 2 decimals so small plates (1.25 kg) survive */
+const toInput = (kg) => Math.round((unit() === "lb" ? kg / KG_PER_LB : kg) * 100) / 100;
 const fmtW = (kg) => toUnit(kg) + " " + unit();
 const e1rm = (z) => (z.reps <= 1 ? z.weight : z.weight * (1 + z.reps / 30));
 const bestSet = (sets) => sets.reduce((b, z) => (!b || z.weight > b.weight || (z.weight === b.weight && z.reps > b.reps) ? z : b), null);
@@ -253,9 +286,18 @@ function go(name, params = {}) {
 
 function render() {
   const fn = VIEWS[view.name] || VIEWS.home;
-  const banner = storageBroken
-    ? '<div class="banner"><b>Saved data could not be read.</b> A copy was kept in this browser (key <code>strength-log-corrupt-*</code>). Changes are <b>not being saved</b>. Import a backup, or <button class="btn small" data-action="unlock-storage">start fresh</button>.</div>'
-    : "";
+  let banner = "";
+  if (storageBroken && brokenReason === "newer") {
+    banner += '<div class="banner"><b>This data was saved by a newer version of Strength Log.</b> It is shown read-only and changes are <b>not being saved</b>. Reload to get the latest version, or <button class="btn small" data-action="unlock-storage">start fresh</button> (a copy is kept as <code>strength-log-newer-*</code>).</div>';
+  } else if (storageBroken) {
+    banner += '<div class="banner"><b>Saved data could not be read.</b> A copy was kept in this browser (key <code>strength-log-corrupt-*</code>). Changes are <b>not being saved</b>. Import a backup, or <button class="btn small" data-action="unlock-storage">start fresh</button>.</div>';
+  }
+  if (saveError) {
+    banner += '<div class="banner"><b>' + esc(saveError) + '</b> Recent changes are <b>not saved</b>. <button class="btn small" data-action="export">Export backup</button> now.</div>';
+  }
+  if (updateReady) {
+    banner += '<div class="banner info">A new version is available. <button class="btn small" data-action="reload">Reload</button></div>';
+  }
   app.innerHTML = banner + fn(view);
   if (view.name === "library") renderLibraryList();
 }
@@ -308,6 +350,7 @@ const VIEWS = {
     const groups = Object.keys(CATALOG);
     const customGroups = [...new Set(data.exercises.filter((e) => !e.builtin).map((e) => e.group))].filter((g) => !groups.includes(g));
     const all = ["All", ...groups, ...customGroups];
+    if (!all.includes(libFilter)) libFilter = "All";
     const chips = all.map((g) => '<button class="chip' + (g === libFilter ? " active" : "") + '" data-action="filter" data-id="' + esc(g) + '">' + esc(g) + "</button>").join("");
     return backBtn("home", "Back") +
       '<div class="top"><div><h2>Exercise library</h2><div class="muted">' + data.exercises.length + " exercises · " + (all.length - 1) + ' muscle groups</div></div><button class="btn" data-action="custom">+ Custom</button></div>' +
@@ -372,7 +415,7 @@ const VIEWS = {
     if (sessionId && !editing) return notFound();
     const last = lastFor(id);
     const base = editing ? editing.sets : last ? last.sets : [{ weight: "", reps: "" }];
-    const sets = base.map((z) => ({ weight: z.weight === "" ? "" : toUnit(z.weight), reps: z.reps }));
+    const sets = base.map((z) => ({ weight: z.weight === "" ? "" : toInput(z.weight), kg: z.weight, reps: z.reps }));
     return backBtn("open", e.name, id) +
       "<h2>" + (editing ? "Edit workout" : "Log workout") + '</h2><div class="muted">' + (editing ? "" : last ? "Previous workout pre-filled." : "") + "</div>" +
       '<label for="wdate">Date</label><input id="wdate" type="date" max="' + localDate() + '" value="' + esc(editing ? editing.date : localDate()) + '">' +
@@ -399,8 +442,10 @@ function backBtn(action, label, id = "") {
 function stat(v, label) { return '<div class="stat"><b>' + esc(v) + "</b><span>" + esc(label) + "</span></div>"; }
 function notFound() { return backBtn("home", "Home") + '<div class="card empty">Not found.</div>'; }
 
+/** z: { weight: display value, kg?: original stored kg (kept if the field is left unchanged), reps } */
 function setRow(z, i) {
-  return '<div class="set"><span>' + (i + 1) + '</span><input class="wt" type="number" inputmode="decimal" step="any" min="0" value="' + esc(z.weight) +
+  const keep = z.kg !== undefined && z.kg !== "" ? ' data-kg="' + esc(z.kg) + '" data-shown="' + esc(z.weight) + '"' : "";
+  return '<div class="set"><span>' + (i + 1) + '</span><input class="wt" type="number" inputmode="decimal" step="any" min="0"' + keep + ' value="' + esc(z.weight) +
     '" placeholder="' + unit() + '"><input class="rp" type="number" inputmode="numeric" min="0" step="1" value="' + esc(z.reps) +
     '" placeholder="reps"><button class="del" data-action="remove-set" aria-label="Remove set">×</button></div>';
 }
@@ -453,6 +498,7 @@ const ACTIONS = {
   log: (id) => go("log", { id }),
   custom: (id) => go("custom", { id: id || null }),
   filter: (g) => { libFilter = g; go("library"); },
+  reload: () => location.reload(),
   unit: (u) => { data.settings.unit = u; save(); render(); },
 
   "edit-session": (sid) => {
@@ -469,18 +515,27 @@ const ACTIONS = {
   "add-set": () => {
     const n = document.querySelectorAll("#sets .set").length;
     const lastRow = document.querySelector("#sets .set:last-child");
-    const prev = lastRow ? { weight: lastRow.querySelector(".wt").value, reps: lastRow.querySelector(".rp").value } : { weight: "", reps: "" };
+    const wt = lastRow && lastRow.querySelector(".wt");
+    const prev = lastRow ? { weight: wt.value, kg: wt.value === wt.dataset.shown ? wt.dataset.kg : undefined, reps: lastRow.querySelector(".rp").value } : { weight: "", reps: "" };
     document.getElementById("sets").insertAdjacentHTML("beforeend", setRow(prev, n));
   },
   "hero-toggle": (_, el) => el.classList.toggle("paused"),
   "remove-set": (_, el) => { el.closest(".set").remove(); renumberSets(); },
   "save-session": (id, el) => {
-    const sets = [...document.querySelectorAll("#sets .set")]
-      .map((r) => ({ weight: fromUnit(num(r.querySelector(".wt").value)), reps: Math.round(num(r.querySelector(".rp").value)) }))
-      .filter((z) => z.reps > 0);
+    const rows = [...document.querySelectorAll("#sets .set")];
+    const bad = (v) => v.trim() !== "" && !(Number(v) >= 0 && Number.isFinite(Number(v)));
+    if (rows.some((r) => bad(r.querySelector(".wt").value) || bad(r.querySelector(".rp").value))) {
+      return alert("Weights and reps must be numbers of 0 or more.");
+    }
+    const sets = rows.map((r) => {
+      const wt = r.querySelector(".wt");
+      const weight = wt.dataset.kg !== undefined && wt.value === wt.dataset.shown ? num(wt.dataset.kg) : fromUnit(num(wt.value));
+      return { weight, reps: Math.round(num(r.querySelector(".rp").value)) };
+    }).filter((z) => z.reps > 0);
     if (!sets.length) return alert("Enter at least one set with reps.");
     const date = document.getElementById("wdate").value;
     if (!isDate(date)) return alert("Pick a valid date.");
+    if (date > localDate()) return alert("The date can't be in the future.");
     const note = document.getElementById("wnote").value.trim();
     const sid = el.dataset.session;
     if (sid) {
@@ -498,7 +553,7 @@ const ACTIONS = {
     if (!name) return alert("Enter a name.");
     const clash = data.exercises.find((e) => e.name.toLowerCase() === name.toLowerCase() && e.id !== id);
     if (clash) return alert('"' + clash.name + '" already exists.');
-    const group = document.getElementById("egroup").value.trim() || "Other";
+    const group = canonGroup(document.getElementById("egroup").value, [...new Set(data.exercises.map((x) => x.group))]);
     const type = document.getElementById("etype").value;
     let e = id && findExercise(id);
     if (e) Object.assign(e, { name, group, type, icon: iconFor(group) });
@@ -521,10 +576,19 @@ const ACTIONS = {
   },
 
   export: () => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    let text = JSON.stringify(data, null, 2), name = "strength-log-backup-";
+    if (storageBroken && brokenRaw != null) {
+      if (!confirm("Your saved data couldn't be loaded normally. Export the original stored data, unchanged?\n\nOK = original data (recommended)\nCancel = what is shown on screen")) {
+        if (!confirm("The on-screen data may be incomplete. Export it anyway?")) return;
+      } else {
+        text = brokenRaw;
+        name = "strength-log-original-";
+      }
+    }
+    const blob = new Blob([text], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "strength-log-backup-" + localDate() + ".json";
+    a.download = name + localDate() + ".json";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -553,8 +617,7 @@ const ACTIONS = {
     input.click();
   },
   "import-merge": () => {
-    if (!pendingImport) return;
-    autoBackup();
+    if (!pendingImport || !confirmAutoBackup()) return;
     const ids = new Set(data.exercises.map((e) => e.id));
     const names = new Map(data.exercises.map((e) => [e.name.toLowerCase(), e.id]));
     const remap = new Map();
@@ -576,15 +639,14 @@ const ACTIONS = {
     finishImport();
   },
   "import-replace": () => {
-    if (!pendingImport || !confirm("Replace all workouts on this device with the backup?")) return;
-    autoBackup();
+    if (!pendingImport || !confirm("Replace all workouts on this device with the backup?") || !confirmAutoBackup()) return;
     data = pendingImport;
     finishImport();
   },
   reset: () => {
     if (!confirm("Delete ALL workouts and custom exercises from this device?")) return;
     if (!confirm("Are you sure? Export a backup first if unsure.")) return;
-    autoBackup();
+    if (!confirmAutoBackup()) return;
     data = migrate({});
     save();
     go("home");
@@ -592,17 +654,30 @@ const ACTIONS = {
   "unlock-storage": () => {
     if (!confirm("Start with empty data? The unreadable copy stays in browser storage.")) return;
     storageBroken = false;
+    brokenRaw = null;
     save();
     render();
   },
 };
 
+/** Keeps the last AUTOBACKUP_KEEP snapshots taken before import/reset. Returns false if it couldn't be written. */
 function autoBackup() {
-  try { localStorage.setItem("strength-log-autobackup", JSON.stringify({ at: Date.now(), data })); } catch (_) {}
+  const keys = Object.keys(localStorage).filter((k) => k.startsWith(AUTOBACKUP_PREFIX)).sort();
+  for (const k of keys.slice(0, Math.max(0, keys.length - AUTOBACKUP_KEEP + 1))) localStorage.removeItem(k);
+  try {
+    localStorage.setItem(AUTOBACKUP_PREFIX + Date.now(), JSON.stringify({ at: Date.now(), data }));
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+function confirmAutoBackup() {
+  return autoBackup() || confirm("Couldn't save a safety copy (browser storage is full). Export a backup first. Continue anyway?");
 }
 function finishImport() {
   pendingImport = null;
   storageBroken = false;
+  brokenRaw = null;
   save();
   go("home");
 }
@@ -619,12 +694,27 @@ app.addEventListener("input", (ev) => {
   if (ev.target.id === "q") { libQuery = ev.target.value; renderLibraryList(); }
 });
 
+// Another tab saved: reload from storage so this tab never overwrites newer data.
+window.addEventListener("storage", (ev) => {
+  if (ev.key !== KEY || ev.newValue == null || storageBroken) return;
+  data = load();
+  latestCache = null;
+  // Don't wipe a form the user is filling in; the next save uses the fresh data.
+  if (view.name !== "log" && view.name !== "custom") render();
+});
+
 /* ---------- Boot ---------- */
 data = load();
 save();
 render();
 
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController) return; // first install, nothing changed
+    updateReady = true;
+    if (view.name !== "log" && view.name !== "custom") render();
+  });
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js").catch(() => {});
   });
