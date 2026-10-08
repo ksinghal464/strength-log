@@ -1,6 +1,6 @@
 // Network-first for everything, cache as offline fallback.
 // Bump VERSION when the list of files changes.
-const VERSION = "v17";
+const VERSION = "v18"; // keep in sync with APP_VERSION in app.js
 const CACHE = "strength-log-" + VERSION;
 const IMG_CACHE = "strength-log-img"; // kept across versions
 const ASSETS = [
@@ -9,7 +9,8 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // cache: "reload" so install never copies a stale file from the browser's HTTP cache.
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS.map((u) => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {
@@ -34,8 +35,11 @@ self.addEventListener("fetch", (event) => {
     );
     return;
   }
+  // "no-cache": always revalidate with the server (GitHub Pages sends max-age=600, which would
+  // otherwise serve an up-to-10-minute-old app.js after an update).
+  const fresh = req.mode === "navigate" ? new Request(req.url, { cache: "no-cache" }) : new Request(req, { cache: "no-cache" });
   event.respondWith(
-    fetch(req)
+    fetch(fresh)
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();

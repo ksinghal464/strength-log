@@ -72,6 +72,7 @@ function canonGroup(g, existing) {
 }
 
 /* ---------- Storage ---------- */
+const APP_VERSION = "v18"; // keep in sync with VERSION in sw.js; shown in Settings
 const KEY = "strength-log-v3";
 const LEGACY_KEYS = ["strength-log-v2"];
 const SCHEMA = 5; // 5: updatedAt on items + deletion tombstones (for sync)
@@ -629,7 +630,8 @@ function settingsHTML() {
     '<div class="muted" style="margin-top:6px">Used for est. 1RM of bodyweight exercises (body weight + added weight).</div>' +
     '<label>Data</label><div class="muted" style="margin-bottom:10px">Your workouts stay on this device. Export a backup regularly.</div>' +
     '<div class="row"><button class="btn" data-action="export">Export backup</button><button class="btn" data-action="import">Import backup</button><button class="btn danger" data-action="reset">Reset app</button></div>' +
-    syncSettingsHTML() + "</div></div>";
+    syncSettingsHTML() +
+    '<div class="muted" style="margin-top:16px">App version ' + APP_VERSION + "</div></div></div>";
 }
 
 const VIEWS = {
