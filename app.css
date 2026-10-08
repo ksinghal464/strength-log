@@ -24,12 +24,13 @@ h3 { margin-bottom: 4px; }
 .note { padding: 11px; background: #191919; border-radius: 9px; color: #aaa; font-size: 12px; line-height: 1.5; }
 .banner { background: #3a1d1d; border: 1px solid #6b2b2b; color: #ffb4b4; border-radius: 12px; padding: 12px; margin-bottom: 14px; font-size: 13px; }
 
+.btn, .chip, .seg button { background: #181818; cursor: pointer; }
 .btn {
-  border: 1px solid #333; background: #181818; color: #fff;
-  border-radius: 10px; padding: 10px 13px; font-weight: 650; cursor: pointer; font-size: 14px;
+  border: 1px solid #333; color: #fff;
+  border-radius: 10px; padding: 10px 13px; font-weight: 650; font-size: 14px;
 }
-.btn:disabled { opacity: .5; }
-.primary { background: #fff; color: #111; border-color: #fff; }
+.chip.active, .seg button.active, .primary { background: #fff; color: #111; }
+.primary { border-color: #fff; }
 .danger { color: #ff8b8b; }
 .small { padding: 6px 10px; font-size: 13px; }
 
@@ -41,25 +42,24 @@ textarea { min-height: 70px; resize: vertical; }
 label { display: block; color: #aaa; font-size: 12px; margin: 13px 0 6px; }
 .search { margin: 12px 0; }
 
-.card { background: #171717; border: 1px solid #292929; border-radius: 14px; padding: 14px; margin: 11px 0; }
+.card, .exercise { background: #171717; border: 1px solid #292929; }
+.card { border-radius: 14px; padding: 14px; margin: 11px 0; }
 
 .exercise {
-  background: #171717; border: 1px solid #292929; border-radius: 12px; padding: 11px; margin: 8px 0;
+  border-radius: 12px; padding: 11px; margin: 8px 0;
   display: flex; gap: 12px; align-items: center; cursor: pointer; width: 100%; color: inherit; text-align: left; font: inherit;
 }
 .exercise .info { flex: 1; min-width: 0; }
 .exercise small { display: block; color: #999; margin-top: 3px; }
 .thumb {
-  width: 52px; height: 52px; border-radius: 10px; background: #222; font-size: 24px;
+  width: 52px; height: 52px; border-radius: 10px; background: #fff; font-size: 24px; overflow: hidden;
   display: flex; align-items: center; justify-content: center; flex: none;
 }
 
 .chips { display: flex; gap: 7px; overflow: auto; padding-bottom: 3px; }
-.chip { white-space: nowrap; border: 1px solid #333; background: #181818; color: #ddd; border-radius: 999px; padding: 7px 11px; cursor: pointer; }
-.chip.active { background: #fff; color: #111; }
+.chip { white-space: nowrap; border: 1px solid #333; color: #ddd; border-radius: 999px; padding: 7px 11px; }
 .seg { display: inline-flex; border: 1px solid #333; border-radius: 10px; overflow: hidden; }
-.seg button { border: 0; background: #181818; color: #ddd; padding: 8px 14px; cursor: pointer; font-weight: 600; }
-.seg button.active { background: #fff; color: #111; }
+.seg button { border: 0; color: #ddd; padding: 8px 14px; font-weight: 600; }
 
 .set { display: grid; grid-template-columns: 30px 1fr 1fr 30px; gap: 7px; align-items: center; margin: 8px 0; }
 .set span { color: #888; text-align: center; }
@@ -81,7 +81,6 @@ label { display: block; color: #aaa; font-size: 12px; margin: 13px 0 6px; }
 .chart { width: 100%; height: auto; display: block; margin-top: 10px; background: #121212; border-radius: 10px; }
 .chart text { fill: #888; font-size: 10px; font-family: inherit; }
 
-.thumb { overflow: hidden; background: #fff; }
 .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .hero { position: relative; margin: 0 0 12px; border-radius: 14px; overflow: hidden; background: #fff; aspect-ratio: 4 / 3; cursor: pointer; }
 .hero img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }

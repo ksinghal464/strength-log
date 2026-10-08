@@ -21,12 +21,12 @@ const CATALOG = {
 };
 const TYPE_CODES = { b: "barbell", d: "dumbbell", c: "cable", m: "machine", w: "bodyweight", o: "other" };
 const TYPES = {
-  barbell: "Barbell · total weight including bar",
-  dumbbell: "Dumbbell · one dumbbell",
-  machine: "Machine · selected stack weight",
-  cable: "Cable · selected stack weight",
-  bodyweight: "Bodyweight · added weight only",
-  other: "Other",
+  barbell: { label: "Barbell · total weight including bar", hint: "Record total weight including the bar." },
+  dumbbell: { label: "Dumbbell · one dumbbell", hint: "Record the weight of one dumbbell." },
+  machine: { label: "Machine · selected stack weight", hint: "Record the selected machine weight." },
+  cable: { label: "Cable · selected stack weight", hint: "Record the selected cable stack weight." },
+  bodyweight: { label: "Bodyweight · added weight only", hint: "Record added weight only (0 for bodyweight)." },
+  other: { label: "Other", hint: "Record the weight used." },
 };
 const ICONS = { Chest: "🏋️", Back: "🦾", Quads: "🦵", Hamstrings: "🦵", Glutes: "🍑", Shoulders: "💪", Biceps: "💪", Triceps: "💪", Calves: "🦵", Core: "🎯", Forearms: "🤝", "Full Body": "🏋️" };
 const iconFor = (g) => ICONS[g] || "🏋️";
@@ -55,6 +55,7 @@ function heroHTML(e) {
 }
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const builtinId = (name) => "b:" + slug(name);
+const uid = (prefix) => prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 const BUILTINS = Object.entries(CATALOG).flatMap(([group, list]) =>
   list.map((entry) => {
@@ -102,6 +103,7 @@ function load() {
 }
 
 function save() {
+  latestCache = null;
   if (storageBroken) return;
   try {
     localStorage.setItem(KEY, JSON.stringify(data));
@@ -122,6 +124,7 @@ function migrate(input) {
   const idMap = new Map(); // old id -> new id
   const customs = [];
   const seenCustomNames = new Map();
+  const customIds = new Set();
 
   const usedIds = new Set(oldSessions.map((s) => s && String(s.exerciseId)));
   for (const e of oldExercises) {
@@ -137,7 +140,8 @@ function migrate(input) {
     if (b) { idMap.set(oldId, b.id); continue; }
     const key = name.toLowerCase();
     if (seenCustomNames.has(key)) { idMap.set(oldId, seenCustomNames.get(key)); continue; }
-    const id = oldId.startsWith("c") ? oldId : "c" + slug(name) + "-" + Math.random().toString(36).slice(2, 7);
+    const id = oldId.startsWith("c") && !customIds.has(oldId) ? oldId : uid("c" + slug(name) + "-");
+    customIds.add(id);
     const group = String(e.group || "Other").trim() || "Other";
     customs.push({
       id, name, group,
@@ -161,7 +165,7 @@ function migrate(input) {
       .filter((z) => z.reps > 0);
     if (!sets.length) continue;
     let id = s.id != null ? String(s.id) : "";
-    if (!id || seenSessionIds.has(id)) id = "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    if (!id || seenSessionIds.has(id)) id = uid("s");
     seenSessionIds.add(id);
     const createdAt = num(s.createdAt) || Date.now();
     sessions.push({
@@ -204,12 +208,24 @@ const e1rm = (z) => (z.reps <= 1 ? z.weight : z.weight * (1 + z.reps / 30));
 const bestSet = (sets) => sets.reduce((b, z) => (!b || z.weight > b.weight || (z.weight === b.weight && z.reps > b.reps) ? z : b), null);
 const sessionE1rm = (s) => Math.max(0, ...s.sets.map(e1rm));
 const fmtSet = (z) => (z.weight ? fmtW(z.weight) + " × " : "") + z.reps + (z.weight ? "" : " reps");
+const sessionSummary = (s) => fmtSet(bestSet(s.sets));
 const byNewest = (a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt;
 const byOldest = (a, b) => -byNewest(a, b);
 
 const findExercise = (id) => data.exercises.find((e) => e.id === id);
+const findSession = (id) => data.sessions.find((s) => s.id === id);
 const sessionsFor = (id) => data.sessions.filter((s) => s.exerciseId === id);
-const lastFor = (id) => sessionsFor(id).sort(byNewest)[0];
+let latestCache = null; // exerciseId -> newest session; reset by save()
+function lastFor(id) {
+  if (!latestCache) {
+    latestCache = new Map();
+    for (const s of data.sessions) {
+      const cur = latestCache.get(s.exerciseId);
+      if (!cur || byNewest(s, cur) < 0) latestCache.set(s.exerciseId, s);
+    }
+  }
+  return latestCache.get(id);
+}
 
 /** Session ids that set a new best estimated 1RM vs all earlier sessions of that exercise. */
 function prSessionIds(sessions) {
@@ -251,8 +267,7 @@ function exerciseRow(e, sub) {
 
 const VIEWS = {
   home() {
-    const used = new Map();
-    for (const s of data.sessions) used.set(s.exerciseId, true);
+    const used = new Set(data.sessions.map((s) => s.exerciseId));
     const exercises = data.exercises.filter((e) => used.has(e.id));
     let html = '<div class="top"><div><h1>Strength Log</h1><div class="muted">Log. Compare. Get stronger.</div></div><button class="btn" data-action="library">+ Exercise</button></div>';
 
@@ -265,7 +280,7 @@ const VIEWS = {
       for (const id of recentIds) {
         const e = findExercise(id); if (!e) continue;
         const s = lastFor(id);
-        html += exerciseRow(e, fmtDate(s.date) + " · " + fmtSet(bestSet(s.sets)));
+        html += exerciseRow(e, fmtDate(s.date) + " · " + sessionSummary(s));
       }
       html += "</div>";
 
@@ -276,13 +291,13 @@ const VIEWS = {
       }
       for (const [g, list] of groups) {
         html += '<div class="section"><h3>' + esc(g) + "</h3>";
-        for (const e of list) html += exerciseRow(e, fmtSet(bestSet(lastFor(e.id).sets)));
+        for (const e of list) html += exerciseRow(e, sessionSummary(lastFor(e.id)));
         html += "</div>";
       }
     }
 
     html += '<div class="section"><div class="card"><b>Settings</b>' +
-      '<label>Units</label><div class="seg"><button data-action="unit" data-id="kg" class="' + (unit() === "kg" ? "active" : "") + '">kg</button><button data-action="unit" data-id="lb" class="' + (unit() === "lb" ? "active" : "") + '">lb</button></div>' +
+      '<label>Units</label><div class="seg">' + ["kg", "lb"].map((u) => '<button data-action="unit" data-id="' + u + '" class="' + (unit() === u ? "active" : "") + '">' + u + "</button>").join("") + "</div>" +
       '<label>Data</label><div class="muted" style="margin-bottom:10px">Your workouts stay on this device. Export a backup regularly.</div>' +
       '<div class="row"><button class="btn" data-action="export">Export backup</button><button class="btn" data-action="import">Import backup</button><button class="btn danger" data-action="reset">Reset app</button></div>' +
       "</div></div>";
@@ -294,7 +309,7 @@ const VIEWS = {
     const customGroups = [...new Set(data.exercises.filter((e) => !e.builtin).map((e) => e.group))].filter((g) => !groups.includes(g));
     const all = ["All", ...groups, ...customGroups];
     const chips = all.map((g) => '<button class="chip' + (g === libFilter ? " active" : "") + '" data-action="filter" data-id="' + esc(g) + '">' + esc(g) + "</button>").join("");
-    return '<button class="btn back" data-action="home">← Back</button>' +
+    return backBtn("home", "Back") +
       '<div class="top"><div><h2>Exercise library</h2><div class="muted">' + data.exercises.length + " exercises · " + (all.length - 1) + ' muscle groups</div></div><button class="btn" data-action="custom">+ Custom</button></div>' +
       '<div class="search"><input id="q" type="search" placeholder="Search exercises..." value="' + esc(libQuery) + '"></div>' +
       '<div class="chips">' + chips + '</div><div id="lib"></div>';
@@ -303,9 +318,9 @@ const VIEWS = {
   custom({ id }) {
     const e = id ? findExercise(id) : null;
     if (id && (!e || e.builtin)) return notFound();
-    const opts = Object.entries(TYPES).map(([k, v]) => '<option value="' + k + '"' + (e && e.type === k ? " selected" : "") + ">" + esc(v) + "</option>").join("");
+    const opts = Object.entries(TYPES).map(([k, v]) => '<option value="' + k + '"' + (e && e.type === k ? " selected" : "") + ">" + esc(v.label) + "</option>").join("");
     const groupOpts = [...new Set(data.exercises.map((x) => x.group))].map((g) => '<option value="' + esc(g) + '">').join("");
-    return '<button class="btn back" data-action="' + (e ? "open" : "library") + '" data-id="' + esc(e ? e.id : "") + '">← ' + (e ? esc(e.name) : "Library") + "</button>" +
+    return (e ? backBtn("open", e.name, e.id) : backBtn("library", "Library")) +
       "<h2>" + (e ? "Edit exercise" : "Custom exercise") + "</h2>" +
       '<label for="ename">Exercise name</label><input id="ename" placeholder="e.g. Hammer Strength Press" value="' + esc(e ? e.name : "") + '">' +
       '<label for="egroup">Muscle group</label><input id="egroup" list="groups" placeholder="e.g. Chest" value="' + esc(e ? e.group : "") + '"><datalist id="groups">' + groupOpts + "</datalist>" +
@@ -325,11 +340,6 @@ const VIEWS = {
       best1rm = Math.max(best1rm, e1rm(z));
       volume += z.weight * z.reps;
     }
-    const conv = e.type === "barbell" ? "Record total weight including the bar."
-      : e.type === "dumbbell" ? "Record the weight of one dumbbell."
-      : e.type === "bodyweight" ? "Record added weight only (0 for bodyweight)."
-      : e.type === "other" ? "Record the weight used."
-      : "Record the selected machine/cable weight.";
 
     const history = sessions.length ? sessions.map((s) =>
       '<div class="session"><div class="session-head"><b>' + esc(fmtDate(s.date)) + (prs.has(s.id) ? '<span class="pr">PR</span>' : "") + "</b>" +
@@ -340,12 +350,12 @@ const VIEWS = {
       "</table>" + (s.note ? '<div class="session-note">' + esc(s.note) + "</div>" : "") + "</div>"
     ).join("") : '<div class="empty">No workouts logged yet.</div>';
 
-    return '<button class="btn back" data-action="home">← Exercises</button>' +
+    return backBtn("home", "Exercises") +
       '<div class="top"><div><h2>' + esc(e.name) + '</h2><div class="muted">' + esc(e.group) + " · " + esc(e.type) +
       (e.builtin ? "" : ' · <a href="#" data-action="custom" data-id="' + esc(e.id) + '" style="color:#aaa">edit</a>') +
       '</div></div><button class="btn primary" data-action="log" data-id="' + esc(id) + '">+ Log</button></div>' +
       heroHTML(e) +
-      '<div class="note">' + esc(conv) + "</div>" +
+      '<div class="note">' + esc((TYPES[e.type] || TYPES.other).hint) + "</div>" +
       '<div class="stats">' +
       stat(top ? fmtW(top) : "—", "Best weight") +
       stat(best1rm ? fmtW(round1(best1rm)) : "—", "Est. 1RM") +
@@ -358,12 +368,12 @@ const VIEWS = {
   log({ id, sessionId }) {
     const e = findExercise(id);
     if (!e) return notFound();
-    const editing = sessionId ? data.sessions.find((s) => s.id === sessionId) : null;
+    const editing = sessionId ? findSession(sessionId) : null;
     if (sessionId && !editing) return notFound();
     const last = lastFor(id);
     const base = editing ? editing.sets : last ? last.sets : [{ weight: "", reps: "" }];
     const sets = base.map((z) => ({ weight: z.weight === "" ? "" : toUnit(z.weight), reps: z.reps }));
-    return '<button class="btn back" data-action="open" data-id="' + esc(id) + '">← ' + esc(e.name) + "</button>" +
+    return backBtn("open", e.name, id) +
       "<h2>" + (editing ? "Edit workout" : "Log workout") + '</h2><div class="muted">' + (editing ? "" : last ? "Previous workout pre-filled." : "") + "</div>" +
       '<label for="wdate">Date</label><input id="wdate" type="date" max="' + localDate() + '" value="' + esc(editing ? editing.date : localDate()) + '">' +
       '<div class="card"><div class="set" style="margin-top:0"><span></span><small class="muted">Weight (' + unit() + ')</small><small class="muted">Reps</small><span></span></div>' +
@@ -375,7 +385,7 @@ const VIEWS = {
   import() {
     if (!pendingImport) return notFound();
     const p = pendingImport;
-    return '<button class="btn back" data-action="home">← Cancel</button><h2>Import backup</h2>' +
+    return backBtn("home", "Cancel") + "<h2>Import backup</h2>" +
       '<div class="card">Backup contains <b>' + p.sessions.length + "</b> workouts and <b>" + p.exercises.filter((e) => !e.builtin).length + "</b> custom exercises.<br>" +
       'This device has <b>' + data.sessions.length + "</b> workouts.</div>" +
       '<div class="note">Merge keeps everything here and adds what is new from the backup. Replace discards current data. A copy of current data is saved in this browser either way.</div>' +
@@ -383,8 +393,11 @@ const VIEWS = {
   },
 };
 
+function backBtn(action, label, id = "") {
+  return '<button class="btn back" data-action="' + action + '" data-id="' + esc(id) + '">← ' + esc(label) + "</button>";
+}
 function stat(v, label) { return '<div class="stat"><b>' + esc(v) + "</b><span>" + esc(label) + "</span></div>"; }
-function notFound() { return '<button class="btn back" data-action="home">← Home</button><div class="card empty">Not found.</div>'; }
+function notFound() { return backBtn("home", "Home") + '<div class="card empty">Not found.</div>'; }
 
 function setRow(z, i) {
   return '<div class="set"><span>' + (i + 1) + '</span><input class="wt" type="number" inputmode="decimal" step="any" min="0" value="' + esc(z.weight) +
@@ -396,11 +409,11 @@ function renumberSets() {
 }
 
 function chart(sessions) {
-  const pts = sessions.slice().sort(byOldest).map((s) => ({
-    date: s.date,
-    v: sessionE1rm(s) || Math.max(...s.sets.map((z) => z.reps)),
-    isWeight: sessionE1rm(s) > 0,
-  }));
+  // One metric for the whole chart: est. 1RM if any session is weighted, otherwise reps.
+  const weighted = sessions.some((s) => sessionE1rm(s) > 0);
+  const pts = sessions.slice().sort(byOldest)
+    .filter((s) => !weighted || sessionE1rm(s) > 0)
+    .map((s) => ({ date: s.date, v: weighted ? sessionE1rm(s) : Math.max(...s.sets.map((z) => z.reps)), isWeight: weighted }));
   const W = 600, H = 220, P = { l: 40, r: 12, t: 14, b: 26 };
   const vals = pts.map((p) => (p.isWeight ? toUnit(p.v) : p.v));
   let lo = Math.min(...vals), hi = Math.max(...vals);
@@ -428,7 +441,7 @@ function renderLibraryList() {
   if (!el) return;
   el.innerHTML = xs.map((e) => {
     const l = lastFor(e.id);
-    return exerciseRow(e, l ? fmtSet(bestSet(l.sets)) + " · " + fmtDate(l.date) : e.group + (e.builtin ? "" : " · custom"));
+    return exerciseRow(e, l ? sessionSummary(l) + " · " + fmtDate(l.date) : e.group + (e.builtin ? "" : " · custom"));
   }).join("") || '<div class="empty">No exercise found.</div>';
 }
 
@@ -443,11 +456,11 @@ const ACTIONS = {
   unit: (u) => { data.settings.unit = u; save(); render(); },
 
   "edit-session": (sid) => {
-    const s = data.sessions.find((x) => x.id === sid);
+    const s = findSession(sid);
     if (s) go("log", { id: s.exerciseId, sessionId: sid });
   },
   "delete-session": (sid) => {
-    const s = data.sessions.find((x) => x.id === sid);
+    const s = findSession(sid);
     if (!s || !confirm("Delete the workout from " + fmtDate(s.date) + "?")) return;
     data.sessions = data.sessions.filter((x) => x.id !== sid);
     save();
@@ -471,10 +484,10 @@ const ACTIONS = {
     const note = document.getElementById("wnote").value.trim();
     const sid = el.dataset.session;
     if (sid) {
-      const s = data.sessions.find((x) => x.id === sid);
+      const s = findSession(sid);
       if (s) Object.assign(s, { date, sets, note });
     } else {
-      data.sessions.push({ id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), exerciseId: id, date, createdAt: Date.now(), sets, note });
+      data.sessions.push({ id: uid("s"), exerciseId: id, date, createdAt: Date.now(), sets, note });
     }
     save();
     go("exercise", { id });
@@ -490,7 +503,7 @@ const ACTIONS = {
     let e = id && findExercise(id);
     if (e) Object.assign(e, { name, group, type, icon: iconFor(group) });
     else {
-      e = { id: "c" + Date.now().toString(36), name, group, type, icon: iconFor(group), builtin: false };
+      e = { id: uid("c"), name, group, type, icon: iconFor(group), builtin: false };
       data.exercises.push(e);
     }
     save();
@@ -546,10 +559,14 @@ const ACTIONS = {
     const names = new Map(data.exercises.map((e) => [e.name.toLowerCase(), e.id]));
     const remap = new Map();
     for (const e of pendingImport.exercises) {
-      if (ids.has(e.id)) continue;
       const same = names.get(e.name.toLowerCase());
-      if (same) { remap.set(e.id, same); continue; }
-      data.exercises.push(e);
+      if (same) { if (same !== e.id) remap.set(e.id, same); continue; }
+      // Same id but a different name on this device: give the import a fresh id.
+      const id = ids.has(e.id) ? uid("c" + slug(e.name) + "-") : e.id;
+      if (id !== e.id) remap.set(e.id, id);
+      data.exercises.push({ ...e, id });
+      ids.add(id);
+      names.set(e.name.toLowerCase(), id);
     }
     const sids = new Set(data.sessions.map((s) => s.id));
     for (const s of pendingImport.sessions) {
