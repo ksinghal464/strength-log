@@ -1,6 +1,6 @@
 // Network-first for everything, cache as offline fallback.
 // Bump VERSION when the list of files changes.
-const VERSION = "v12";
+const VERSION = "v13";
 const CACHE = "strength-log-" + VERSION;
 const IMG_CACHE = "strength-log-img"; // kept across versions
 const ASSETS = [

@@ -459,8 +459,8 @@ function trendChange(pts, days) {
   if (!base.trend) return null;
   return { diff: last.trend - base.trend, pct: ((last.trend - base.trend) / base.trend) * 100, since: base.date };
 }
-/** Best actual weight lifted for at least N reps (a 100×5 also counts as a 3-rep best). */
-function repMaxes(sessions, targets = [1, 3, 5, 8, 10, 12]) {
+/** Best actual weight lifted for at least N reps (a 100×8 also counts as a 5-rep best). */
+function repMaxes(sessions, targets = [5, 8, 10, 12, 15, 18]) {
   return targets.map((n) => {
     let best = null;
     for (const s of sessions.slice().sort(byOldest)) for (const z of s.sets) { // oldest first: date = first time achieved
@@ -712,7 +712,7 @@ const VIEWS = {
     // Rep maxes: actual best weight for at least N reps.
     let rmHTML = "";
     if (weighted && top > 0) {
-      rmHTML = '<div class="card"><b>Rep records</b><div class="muted">Heaviest ' + (e.type === "bodyweight" ? "added weight" : "weight") + " lifted for at least N reps</div>" +
+      rmHTML = '<div class="card"><b>Personal bests by reps</b><div class="muted">Heaviest ' + (e.type === "bodyweight" ? "added weight" : "weight") + " you've lifted for at least this many reps</div>" +
         '<table class="history"><tr><th>Reps</th><th>Weight</th><th>Date</th></tr>' +
         repMaxes(sessions).map(({ n, best }) => "<tr><td>" + n + "</td><td>" + (best ? esc(fmtW(best.weight)) + (best.reps > n ? ' <span class="muted">× ' + best.reps + "</span>" : "") : "—") + "</td><td>" + (best ? esc(fmtDate(best.date)) : "") + "</td></tr>").join("") +
         "</table></div>";
