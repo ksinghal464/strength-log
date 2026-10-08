@@ -440,6 +440,35 @@ function series(sessions, metric) {
   pts.forEach((p, i) => { p.trend = Math.max(...pts.slice(Math.max(0, i - 2), i + 1).map((q) => q.v)); });
   return pts;
 }
+/**
+ * What each workout improved on, vs. all earlier workouts of the exercise:
+ * id -> { main: bool (new best in the main metric), reps: [n...] (new personal bests by reps), sets: Set(set index) }.
+ */
+function workoutPRs(sessions) {
+  const out = new Map();
+  if (!sessions.length) return out;
+  const main = new Set(series(sessions, primaryMetric(sessions)).filter((p) => p.pr).map((p) => p.id));
+  const best = new Map(REP_TARGETS.map((n) => [n, -1]));
+  sessions.slice().sort(byOldest).forEach((s, i) => {
+    const info = { main: main.has(s.id), reps: [], sets: new Set() };
+    const after = new Map(best);
+    s.sets.forEach((z, k) => {
+      for (const n of REP_TARGETS) {
+        if (z.reps >= n && z.weight > 0 && z.weight > best.get(n)) {
+          if (i > 0) { if (!info.reps.includes(n)) info.reps.push(n); info.sets.add(k); }
+          after.set(n, Math.max(after.get(n), z.weight));
+        }
+      }
+    });
+    if (info.main) {
+      const z = primaryMetric(sessions) === "e1rm" ? bestE1rmSet(s) : s.sets.reduce((b, x) => (x.reps > b.reps ? x : b));
+      info.sets.add(s.sets.indexOf(z));
+    }
+    for (const [n, w] of after) best.set(n, w);
+    out.set(s.id, info);
+  });
+  return out;
+}
 /** Session ids that set a new best in the exercise's main metric. */
 function prSessionIds(sessions) {
   if (!sessions.length) return new Set();
@@ -460,7 +489,8 @@ function trendChange(pts, days) {
   return { diff: last.trend - base.trend, pct: ((last.trend - base.trend) / base.trend) * 100, since: base.date };
 }
 /** Best actual weight lifted for at least N reps (a 100×8 also counts as a 5-rep best). */
-function repMaxes(sessions, targets = [5, 8, 10, 12, 15, 18]) {
+const REP_TARGETS = [5, 8, 10, 12, 15, 18];
+function repMaxes(sessions, targets = REP_TARGETS) {
   return targets.map((n) => {
     let best = null;
     for (const s of sessions.slice().sort(byOldest)) for (const z of s.sets) { // oldest first: date = first time achieved
@@ -668,7 +698,7 @@ const VIEWS = {
     const e = findExercise(id);
     if (!e) return notFound();
     const sessions = sessionsFor(id).sort(byNewest);
-    const prs = prSessionIds(sessions);
+    const prInfo = workoutPRs(sessions);
     const metrics = sessions.length ? metricsFor(sessions) : ["e1rm"];
     const metric = metrics.includes(chartMetric) ? chartMetric : metrics[0];
     const weighted = metrics[0] === "e1rm";
@@ -680,14 +710,22 @@ const VIEWS = {
     }
     const last = sessions[0];
 
-    const history = sessions.length ? sessions.map((s) =>
-      '<div class="session"><div class="session-head"><b>' + esc(fmtDate(s.date)) + (prs.has(s.id) ? '<span class="pr">PR</span>' : "") + "</b>" +
-      '<div class="row"><button class="btn small" data-action="edit-session" data-id="' + esc(s.id) + '">Edit</button>' +
-      '<button class="btn small danger" data-action="delete-session" data-id="' + esc(s.id) + '">Delete</button></div></div>' +
-      '<table class="history"><tr><th>Set</th><th>Weight</th><th>Reps</th></tr>' +
-      s.sets.map((z, i) => "<tr><td>" + (i + 1) + "</td><td>" + esc(fmtW(z.weight)) + "</td><td>" + esc(z.reps) + "</td></tr>").join("") +
-      "</table>" + (s.note ? '<div class="session-note">' + esc(s.note) + "</div>" : "") + "</div>"
-    ).join("") : '<div class="empty">No workouts logged yet.</div>';
+    const mainMetric = metrics[0];
+    const history = sessions.length ? sessions.map((s) => {
+      const info = prInfo.get(s.id) || { main: false, reps: [], sets: new Set() };
+      const isPR = info.main || info.reps.length > 0;
+      const wins = [];
+      if (info.main) wins.push((mainMetric === "e1rm" ? "est. 1RM" : "best reps") + " " + fmtMetric(METRICS[mainMetric].of(s), mainMetric));
+      if (info.reps.length) wins.push(info.reps.map((n) => n).join(", ") + "-rep best");
+      return '<div class="session' + (isPR ? " is-pr" : "") + '"><div class="session-head"><b>' + esc(fmtDate(s.date)) + (isPR ? '<span class="pr">★ PR</span>' : "") + "</b>" +
+        '<div class="row"><button class="btn small" data-action="edit-session" data-id="' + esc(s.id) + '">Edit</button>' +
+        '<button class="btn small danger" data-action="delete-session" data-id="' + esc(s.id) + '">Delete</button></div></div>' +
+        '<div class="session-sub">' + (mainMetric === "e1rm" ? "Est. 1RM " + esc(fmtW(sessionE1rm(s))) : esc(METRICS.reps.of(s)) + " best reps") +
+        (wins.length ? ' · <span class="pr-text">New ' + esc(wins.join(" · ")) + "</span>" : "") + "</div>" +
+        '<table class="history"><tr><th>Set</th><th>Weight</th><th>Reps</th></tr>' +
+        s.sets.map((z, i) => "<tr" + (info.sets.has(i) ? ' class="pr-set"' : "") + "><td>" + (i + 1) + "</td><td>" + esc(fmtW(z.weight)) + (info.sets.has(i) ? ' <span class="pr-text">★</span>' : "") + "</td><td>" + esc(z.reps) + "</td></tr>").join("") +
+        "</table>" + (s.note ? '<div class="session-note">' + esc(s.note) + "</div>" : "") + "</div>";
+    }).join("") : '<div class="empty">No workouts logged yet.</div>';
 
     // Progress chart: metric toggle, time range, trend change.
     const all = series(sessions, metric);
@@ -817,14 +855,47 @@ function chart(pts, metric) {
   const labels = '<text x="' + P.l + '" y="' + (H - 6) + '">' + esc(fmtDate(pts[0].date)) + '</text><text x="' + (W - P.r) + '" y="' + (H - 6) + '" text-anchor="end">' + esc(fmtDate(pts[pts.length - 1].date)) + "</text>";
   const marks = pts.map((p, i) => {
     const cx = x(p.date, i).toFixed(1), cy = y(vals[i]).toFixed(1);
-    const tip = "<title>" + esc(fmtDate(p.date) + ": " + fmtMetric(p.v, metric) + (p.pr ? " (PR)" : "")) + "</title>";
     return p.pr
-      ? '<text class="pr-star" x="' + cx + '" y="' + (+cy + 5) + '" text-anchor="middle"' + (p.faded ? ' opacity=".4"' : "") + ">★" + tip + "</text>"
-      : '<circle cx="' + cx + '" cy="' + cy + '" r="3.5" fill="#bbb"' + (p.faded ? ' opacity=".35"' : "") + ">" + tip + "</circle>";
+      ? '<text class="pr-star" x="' + cx + '" y="' + (+cy + 5) + '" text-anchor="middle"' + (p.faded ? ' opacity=".4"' : "") + ">★</text>"
+      : '<circle cx="' + cx + '" cy="' + cy + '" r="3.5" fill="#bbb"' + (p.faded ? ' opacity=".35"' : "") + "></circle>";
   }).join("");
-  return '<svg class="chart" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + esc(METRICS[metric].label) + ' progress chart">' + grid + labels +
+  // Tap/drag on the chart selects the nearest workout; its exact numbers show in the readout.
+  chartPoints = pts.map((p, i) => ({ x: x(p.date, i), y: y(vals[i]), html: pointReadout(p, metric) }));
+  chartBox = { W, top: P.t, bottom: H - P.b };
+  const last = chartPoints[chartPoints.length - 1];
+  return '<div class="readout" id="readout">' + last.html + "</div>" +
+    '<svg class="chart" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="' + esc(METRICS[metric].label) + ' progress chart. Tap to see values.">' + grid + labels +
     '<path d="' + path(vals) + '" fill="none" stroke="#555" stroke-width="1.5"/>' +
-    '<path d="' + path(trend) + '" fill="none" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/>' + marks + "</svg>";
+    '<path d="' + path(trend) + '" fill="none" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/>' + marks +
+    '<g id="cursor"><line x1="' + last.x + '" x2="' + last.x + '" y1="' + P.t + '" y2="' + (H - P.b) + '" stroke="#ffd76a" stroke-dasharray="3 3"/>' +
+    '<circle cx="' + last.x + '" cy="' + last.y + '" r="6" fill="none" stroke="#ffd76a" stroke-width="2"/></g></svg>';
+}
+
+let chartPoints = [], chartBox = null;
+/** "Oct 2, 2026 · Est. 1RM 87.5 kg · best set 75 kg × 5 · ★ PR" */
+function pointReadout(p, metric) {
+  const s = findSession(p.id);
+  let detail = "";
+  if (s && metric === "e1rm") detail = "best set " + fmtSet(bestE1rmSet(s));
+  else if (s && metric === "top") detail = s.sets.length + " sets";
+  else if (s && metric === "volume") detail = s.sets.length + " sets · " + s.sets.reduce((a, z) => a + z.reps, 0) + " reps";
+  else if (s) detail = s.sets.length + " sets";
+  return "<b>" + esc(fmtMetric(p.v, metric)) + "</b> <span>" + esc(METRICS[metric].label) + "</span>" +
+    (p.pr ? ' <span class="pr">★ PR</span>' : "") +
+    '<div class="muted">' + esc(fmtDate(p.date)) + (detail ? " · " + esc(detail) : "") + "</div>";
+}
+function selectChartPoint(svg, clientX) {
+  if (!chartPoints.length || !chartBox) return;
+  const rect = svg.getBoundingClientRect();
+  const vx = ((clientX - rect.left) / rect.width) * chartBox.W;
+  let best = chartPoints[0];
+  for (const p of chartPoints) if (Math.abs(p.x - vx) < Math.abs(best.x - vx)) best = p;
+  const g = svg.querySelector("#cursor");
+  const [line, dot] = g.children;
+  line.setAttribute("x1", best.x); line.setAttribute("x2", best.x);
+  dot.setAttribute("cx", best.x); dot.setAttribute("cy", best.y);
+  const ro = document.getElementById("readout");
+  if (ro) ro.innerHTML = best.html;
 }
 
 function renderLibraryList() {
@@ -1131,6 +1202,12 @@ app.addEventListener("click", (ev) => {
   ev.preventDefault();
   fn(el.dataset.id || "", el);
 });
+for (const type of ["pointerdown", "pointermove"]) {
+  app.addEventListener(type, (ev) => {
+    const svg = ev.target.closest && ev.target.closest("svg.chart");
+    if (svg) selectChartPoint(svg, ev.clientX);
+  });
+}
 app.addEventListener("change", (ev) => {
   if (ev.target.id !== "bw") return;
   const v = ev.target.value.trim();

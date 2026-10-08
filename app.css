@@ -119,3 +119,16 @@ label { display: block; color: #aaa; font-size: 12px; margin: 13px 0 6px; }
 .mbar { position: relative; height: 10px; background: #222; border-radius: 5px; overflow: hidden; }
 .mband { position: absolute; top: 0; bottom: 0; background: rgba(125, 220, 138, .2); }
 .mfill { position: absolute; left: 0; top: 2px; bottom: 2px; background: #fff; border-radius: 4px; }
+
+/* Chart readout + cursor */
+.readout { margin-top: 10px; padding: 8px 10px; background: #121212; border-radius: 10px; min-height: 52px; font-size: 13px; }
+.readout b { font-size: 18px; }
+.readout > span { color: #999; }
+.readout .pr { margin-left: 4px; }
+.chart { touch-action: pan-y; cursor: crosshair; user-select: none; -webkit-user-select: none; }
+
+/* PRs in workout history */
+.session-sub { color: #999; font-size: 12px; margin-top: 4px; }
+.pr-text { color: #ffd76a; }
+.history tr.pr-set td { background: rgba(255, 215, 106, .07); }
+.session.is-pr { border-left: 3px solid #ffd76a; padding-left: 10px; }
