@@ -6,18 +6,18 @@
  * Built-in ids are derived from the name, so reordering is safe.
  */
 const CATALOG = {
-  Chest: ["Barbell Bench Press|b", "Incline Barbell Bench Press|b", "Decline Barbell Bench Press|b", "Paused Bench Press|b", "Dumbbell Bench Press|d", "Incline Dumbbell Press|d", "Decline Dumbbell Press|d", "Dumbbell Fly|d", "Incline Dumbbell Fly|d", "Cable Fly|c", "Low Cable Fly|c", "High Cable Fly|c", "Cable Crossover|c", "Machine Chest Press|m", "Incline Machine Press|m", "Pec Deck|m", "Push Up|w", "Incline Push Up|w", "Decline Push Up|w", "Chest Dip|w"],
-  Back: ["Conventional Deadlift|b", "Sumo Deadlift|b", "Rack Pull|b", "Deficit Deadlift|b", "Lat Pulldown|c", "Wide Grip Lat Pulldown|c", "Close Grip Lat Pulldown|c", "Neutral Grip Pulldown|c", "Pull Up|w", "Chin Up|w", "Assisted Pull Up|m", "Barbell Row|b", "Pendlay Row|b", "T-Bar Row|b", "Dumbbell Row|d", "One Arm Cable Row|c", "Seated Cable Row|c", "Close Grip Cable Row|c", "Chest Supported Row|d", "Machine Row|m", "Meadows Row|b", "Straight Arm Pulldown|c", "Dumbbell Pullover|d", "Barbell Pullover|b"],
-  Quads: ["Barbell Back Squat|b", "High Bar Squat|b", "Low Bar Squat|b", "Front Squat|b", "Pause Squat|b", "Box Squat|b", "Hack Squat|m", "Leg Press|m", "Single Leg Press|m", "Leg Extension|m", "Bulgarian Split Squat|d", "Walking Lunge|d", "Reverse Lunge|d", "Forward Lunge|d", "Dumbbell Lunge|d", "Barbell Lunge|b", "Goblet Squat|d", "Heels Elevated Squat|b", "Smith Machine Squat|m", "Sissy Squat|w"],
-  Hamstrings: ["Romanian Deadlift|b", "Stiff Leg Deadlift|b", "Single Leg Romanian Deadlift|d", "Good Morning|b", "Nordic Curl|w", "Glute Ham Raise|w", "Lying Leg Curl|m", "Seated Leg Curl|m", "Standing Leg Curl|m", "Single Leg Curl|m", "Cable Leg Curl|c", "Slider Leg Curl|w", "Stability Ball Leg Curl|w"],
-  Glutes: ["Barbell Hip Thrust|b", "Dumbbell Hip Thrust|d", "Smith Machine Hip Thrust|m", "Glute Bridge|b", "Single Leg Glute Bridge|w", "Cable Kickback|c", "Machine Glute Kickback|m", "45 Degree Hip Extension|w", "Cable Pull Through|c", "Step Up|d", "High Step Up|d", "Reverse Hyperextension|m"],
-  Shoulders: ["Overhead Press|b", "Push Press|b", "Seated Barbell Press|b", "Seated Dumbbell Shoulder Press|d", "Arnold Press|d", "Dumbbell Lateral Raise|d", "Cable Lateral Raise|c", "Machine Lateral Raise|m", "Lean Away Lateral Raise|d", "Front Raise|d", "Cable Front Raise|c", "Plate Front Raise|o", "Rear Delt Fly|d", "Reverse Pec Deck|m", "Bent Over Rear Delt Raise|d", "Cable Rear Delt Fly|c", "Face Pull|c", "Upright Row|b", "Cable Upright Row|c", "Landmine Press|b"],
-  Biceps: ["Barbell Curl|b", "EZ Bar Curl|b", "Dumbbell Curl|d", "Alternating Dumbbell Curl|d", "Incline Dumbbell Curl|d", "Hammer Curl|d", "Cross Body Hammer Curl|d", "Preacher Curl|b", "Dumbbell Preacher Curl|d", "Cable Curl|c", "Rope Cable Curl|c", "Bayesian Cable Curl|c", "Spider Curl|d", "Concentration Curl|d", "Reverse Curl|b", "Zottman Curl|d", "Machine Curl|m"],
-  Triceps: ["Close Grip Bench Press|b", "Triceps Pushdown|c", "Rope Pushdown|c", "Straight Bar Pushdown|c", "V Bar Pushdown|c", "Overhead Cable Extension|c", "Single Arm Cable Extension|c", "Dumbbell Overhead Extension|d", "EZ Bar Overhead Extension|b", "Skull Crusher|b", "Dumbbell Skull Crusher|d", "Cable Skull Crusher|c", "Tate Press|d", "JM Press|b", "Bench Dip|w", "Parallel Bar Dip|w", "Assisted Dip|m", "Triceps Kickback|d"],
-  Calves: ["Standing Calf Raise|m", "Seated Calf Raise|m", "Leg Press Calf Raise|m", "Donkey Calf Raise|m", "Smith Machine Calf Raise|m", "Single Leg Calf Raise|w", "Bodyweight Calf Raise|w", "Tibialis Raise|w"],
-  Core: ["Cable Crunch|c", "Machine Crunch|m", "Weighted Crunch|o", "Hanging Knee Raise|w", "Hanging Leg Raise|w", "Captain's Chair Knee Raise|w", "Reverse Crunch|w", "Ab Wheel Rollout|w", "Plank|w", "Weighted Plank|o", "Side Plank|w", "Dead Bug|w", "Bird Dog|w", "Pallof Press|c", "Cable Wood Chop|c", "Cable Lift|c", "Russian Twist|o", "Bicycle Crunch|w", "V Up|w", "Sit Up|w", "Decline Sit Up|w", "Toe Touch|w", "Dragon Flag|w"],
-  Forearms: ["Wrist Curl|b", "Reverse Wrist Curl|b", "Behind Back Wrist Curl|b", "Reverse Barbell Curl|b", "Farmer Carry|d", "Suitcase Carry|d", "Plate Pinch Hold|o", "Dead Hang|w"],
-  "Full Body": ["Barbell Clean|b", "Power Clean|b", "Hang Clean|b", "Clean and Press|b", "Push Jerk|b", "Split Jerk|b", "Snatch|b", "Hang Snatch|b", "Dumbbell Clean|d", "Dumbbell Clean and Press|d", "Kettlebell Swing|o", "Turkish Get Up|o", "Thruster|b", "Man Maker|d", "Sled Push|o", "Sled Drag|o"],
+  Chest: ["Barbell Bench Press|b", "Incline Barbell Bench Press|b", "Decline Barbell Bench Press|b", "Dumbbell Bench Press|d", "Incline Dumbbell Press|d", "Dumbbell Fly|d", "Cable Crossover|c", "Machine Chest Press|m", "Pec Deck|m", "Push Up|w", "Chest Dip|w"],
+  Back: ["Conventional Deadlift|b", "Sumo Deadlift|b", "Lat Pulldown|c", "Close Grip Lat Pulldown|c", "Pull Up|w", "Chin Up|w", "Assisted Pull Up|m", "Barbell Row|b", "T-Bar Row|b", "Dumbbell Row|d", "Seated Cable Row|c", "Machine Row|m", "Straight Arm Pulldown|c", "Dumbbell Pullover|d"],
+  Quads: ["Barbell Back Squat|b", "Front Squat|b", "Hack Squat|m", "Leg Press|m", "Leg Extension|m", "Bulgarian Split Squat|d", "Walking Lunge|d", "Dumbbell Lunge|d", "Goblet Squat|d", "Smith Machine Squat|m"],
+  Hamstrings: ["Romanian Deadlift|b", "Stiff Leg Deadlift|b", "Good Morning|b", "Glute Ham Raise|w", "Lying Leg Curl|m", "Seated Leg Curl|m"],
+  Glutes: ["Barbell Hip Thrust|b", "Glute Bridge|b", "Cable Kickback|c", "Cable Pull Through|c", "Step Up|d", "45 Degree Hip Extension|w"],
+  Shoulders: ["Overhead Press|b", "Push Press|b", "Seated Dumbbell Shoulder Press|d", "Arnold Press|d", "Dumbbell Lateral Raise|d", "Cable Lateral Raise|c", "Front Raise|d", "Rear Delt Fly|d", "Reverse Pec Deck|m", "Face Pull|c", "Upright Row|b"],
+  Biceps: ["Barbell Curl|b", "EZ Bar Curl|b", "Dumbbell Curl|d", "Incline Dumbbell Curl|d", "Hammer Curl|d", "Preacher Curl|b", "Cable Curl|c", "Concentration Curl|d", "Machine Curl|m"],
+  Triceps: ["Close Grip Bench Press|b", "Triceps Pushdown|c", "Rope Pushdown|c", "Overhead Cable Extension|c", "Dumbbell Overhead Extension|d", "Skull Crusher|b", "Parallel Bar Dip|w", "Bench Dip|w", "Triceps Kickback|d"],
+  Calves: ["Standing Calf Raise|m", "Seated Calf Raise|m", "Leg Press Calf Raise|m"],
+  Core: ["Cable Crunch|c", "Machine Crunch|m", "Hanging Leg Raise|w", "Hanging Knee Raise|w", "Ab Wheel Rollout|w", "Plank|w", "Side Plank|w", "Russian Twist|o", "Sit Up|w", "Pallof Press|c"],
+  Forearms: ["Wrist Curl|b", "Reverse Wrist Curl|b", "Farmer Carry|d"],
+  "Full Body": ["Power Clean|b", "Clean and Press|b", "Kettlebell Swing|o", "Thruster|b", "Sled Push|o"],
 };
 const TYPE_CODES = { b: "barbell", d: "dumbbell", c: "cable", m: "machine", w: "bodyweight", o: "other" };
 const TYPES = {
@@ -34,7 +34,8 @@ const iconFor = (g) => ICONS[g] || "🏋️";
 const GROUP_IMAGE = { Chest: "Barbell Bench Press", Back: "Barbell Row", Quads: "Barbell Back Squat", Hamstrings: "Romanian Deadlift", Glutes: "Barbell Hip Thrust", Shoulders: "Overhead Press", Biceps: "Barbell Curl", Triceps: "Triceps Pushdown", Calves: "Standing Calf Raise", Core: "Plank", Forearms: "Wrist Curl", "Full Body": "Power Clean" };
 const IMG = typeof IMAGES === "object" ? IMAGES : {};
 function imageKey(e) {
-  if (e.builtin) return IMG[e.name] || null;
+  if (IMG[e.name]) return IMG[e.name];
+  if (e.builtin) return null;
   const g = Object.keys(GROUP_IMAGE).find((k) => k.toLowerCase() === String(e.group).toLowerCase());
   return g ? IMG[GROUP_IMAGE[g]] || null : null;
 }
