@@ -132,3 +132,14 @@ label { display: block; color: #aaa; font-size: 12px; margin: 13px 0 6px; }
 .history tr.pr-set td { background: rgba(255, 215, 106, .07); }
 .session.is-pr { border-left: 3px solid #ffd76a; padding-left: 10px; }
 .chart .tag { fill: #111; font-size: 12px; font-weight: 700; }
+
+/* Compact workout-day lists (home + history): one card, thin dividers, small thumbs. */
+.day { margin: 14px 0; }
+.day h3 { margin: 0 0 6px; font-size: 15px; }
+.day .exercise { margin: 0; padding: 6px 10px; gap: 10px; border-radius: 0; border-width: 0 1px 1px; }
+.day .exercise:first-of-type { border-top-width: 1px; border-radius: 12px 12px 0 0; }
+.day .exercise:last-child { border-radius: 0 0 12px 12px; }
+.day .exercise:only-of-type { border-radius: 12px; }
+.day .thumb { width: 34px; height: 34px; border-radius: 7px; font-size: 16px; }
+.day .exercise b { font-size: 14px; }
+.day .exercise small { margin-top: 1px; font-size: 12px; }

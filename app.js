@@ -72,7 +72,7 @@ function canonGroup(g, existing) {
 }
 
 /* ---------- Storage ---------- */
-const APP_VERSION = "v24"; // keep in sync with VERSION in sw.js; shown in Settings
+const APP_VERSION = "v25"; // keep in sync with VERSION in sw.js; shown in Settings
 const KEY = "strength-log-v3";
 const LEGACY_KEYS = ["strength-log-v2"];
 const SCHEMA = 5; // 5: updatedAt on items + deletion tombstones (for sync)
@@ -501,7 +501,7 @@ function dayHTML([d, list]) {
   const today = localDate(), yesterday = localDate(addDays(new Date(), -1));
   const label = d === today ? "Today" : d === yesterday ? "Yesterday" : fmtDate(d);
   const sets = list.reduce((n, s) => n + s.sets.length, 0);
-  return '<div class="section"><h3>' + esc(label) + ' <span class="muted">· ' + list.length + " exercise" + (list.length > 1 ? "s" : "") + " · " + sets + " set" + (sets === 1 ? "" : "s") + "</span></h3>" +
+  return '<div class="section day"><h3>' + esc(label) + ' <span class="muted">· ' + list.length + " exercise" + (list.length > 1 ? "s" : "") + " · " + sets + " set" + (sets === 1 ? "" : "s") + "</span></h3>" +
     list.map((s) => exerciseRow(findExercise(s.exerciseId), s.sets.length + " set" + (s.sets.length === 1 ? "" : "s") + " · best " + sessionSummary(s))).join("") + "</div>";
 }
 
@@ -636,7 +636,7 @@ const VIEWS = {
     // Only the most recent workout days here; the full list lives on the History page.
     const all = workoutDays();
     html += '<div class="top" style="margin-top:20px"><h3>Recent workouts</h3>' +
-      (all.length > HOME_DAYS ? '<button class="btn small" data-action="history">View all (' + all.length + " days) ›</button>" : "") + "</div>";
+      (all.length > HOME_DAYS ? '<button class="btn small" data-action="history">View all ›</button>' : "") + "</div>";
     html += all.slice(0, HOME_DAYS).map(dayHTML).join("");
     return html + settingsHTML();
   },
