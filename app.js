@@ -123,8 +123,11 @@ function migrate(input) {
   const customs = [];
   const seenCustomNames = new Map();
 
+  const usedIds = new Set(oldSessions.map((s) => s && String(s.exerciseId)));
   for (const e of oldExercises) {
     if (!e || typeof e !== "object" || e.id == null || !e.name) continue;
+    // Built-ins dropped from the catalog are only kept (as custom) if they have workouts.
+    if (e.builtin && !BUILTIN_BY_NAME.has(String(e.name).trim().toLowerCase()) && !usedIds.has(String(e.id))) continue;
     const oldId = String(e.id);
     // Old builds could produce duplicate ids; the old app's find() resolved to the first one,
     // so that's what sessions were logged against. Ignore later duplicates.
