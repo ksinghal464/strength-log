@@ -74,7 +74,7 @@ function canonGroup(g, existing) {
 /* ---------- Storage ---------- */
 const KEY = "strength-log-v3";
 const LEGACY_KEYS = ["strength-log-v2"];
-const SCHEMA = 4;
+const SCHEMA = 5; // 5: updatedAt on items + deletion tombstones (for sync)
 const KG_PER_LB = 0.45359237;
 
 let data;
@@ -126,6 +126,10 @@ function load() {
 }
 
 function save() {
+  writeLocal();
+  scheduleSync();
+}
+function writeLocal() {
   latestCache = null;
   if (storageBroken) return;
   try {
@@ -179,6 +183,7 @@ function migrate(input) {
       type: TYPES[e.type] ? e.type : "other",
       icon: typeof e.icon === "string" && e.icon ? e.icon : iconFor(group),
       builtin: false,
+      updatedAt: num(e.updatedAt),
     });
     seenCustomNames.set(key, id);
     idMap.set(oldId, id);
@@ -203,18 +208,126 @@ function migrate(input) {
       id, exerciseId,
       date: isDate(s.date) ? s.date : localDate(new Date(createdAt)),
       createdAt,
+      updatedAt: num(s.updatedAt) || createdAt,
       sets,
       note: typeof s.note === "string" ? s.note : "",
     });
   }
 
   const settings = src.settings && typeof src.settings === "object" ? src.settings : {};
+  const del = src.deleted && typeof src.deleted === "object" ? src.deleted : {};
+  const stamps = (m) => Object.fromEntries(Object.entries(m && typeof m === "object" ? m : {})
+    .map(([id, t]) => [id, num(t)]).filter(([id, t]) => t > 0 && !id.startsWith("b:")));
   return {
     schemaVersion: SCHEMA,
-    settings: { unit: settings.unit === "lb" ? "lb" : "kg" },
+    settings: { unit: settings.unit === "lb" ? "lb" : "kg", updatedAt: num(settings.updatedAt) },
+    deleted: { sessions: stamps(del.sessions), exercises: stamps(del.exercises) },
     exercises: [...BUILTINS.map((b) => ({ ...b })), ...customs],
     sessions,
   };
+}
+
+/* ---------- Cloud sync (private GitHub Gist) ----------
+ * The token and gist id live under their own key, never in exported backups.
+ * Flow: pull the gist, merge with local (mergeData), save locally, push if the cloud copy differs.
+ */
+const SYNC_KEY = "strength-log-sync";
+const GIST_FILE = "strength-log.json";
+const GIST_DESC = "Strength Log sync";
+const API = "https://api.github.com";
+let sync = readSyncConfig();
+let syncTimer = null, syncing = false, syncAgain = false;
+
+function readSyncConfig() {
+  try { return JSON.parse(localStorage.getItem(SYNC_KEY)) || {}; } catch (_) { return {}; }
+}
+function writeSyncConfig() {
+  try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); } catch (_) {}
+}
+function scheduleSync(delay = 1500) {
+  if (!sync.token || storageBroken) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(runSync, delay);
+}
+async function gh(path, opts = {}) {
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: { Accept: "application/vnd.github+json", Authorization: "Bearer " + sync.token, "Content-Type": "application/json" },
+  });
+  if (res.status === 401) throw new Error("GitHub rejected the token. Check it hasn't expired or been revoked.");
+  if (res.status === 403 || res.status === 404) {
+    const err = new Error(res.status === 404 ? "Not found" : "Token lacks the Gists permission (or rate limited).");
+    err.status = res.status;
+    throw err;
+  }
+  if (!res.ok) throw new Error("GitHub error " + res.status);
+  return res.json();
+}
+async function findOrCreateGist() {
+  for (let page = 1; page <= 10; page++) {
+    const list = await gh("/gists?per_page=100&page=" + page);
+    const hit = list.find((g) => g.description === GIST_DESC && g.files && g.files[GIST_FILE]);
+    if (hit) return hit.id;
+    if (list.length < 100) break;
+  }
+  const g = await gh("/gists", { method: "POST", body: JSON.stringify({ description: GIST_DESC, public: false, files: { [GIST_FILE]: { content: JSON.stringify(data) } } }) });
+  return g.id;
+}
+async function readGist() {
+  const g = await gh("/gists/" + sync.gistId);
+  const f = g.files && g.files[GIST_FILE];
+  if (!f) return null;
+  const text = f.truncated ? await (await fetch(f.raw_url)).text() : f.content;
+  const parsed = JSON.parse(text);
+  if ((parsed.schemaVersion || 0) > SCHEMA) throw new Error("Cloud data is from a newer app version. Reload to update.");
+  return migrate(parsed);
+}
+async function runSync() {
+  if (!sync.token || storageBroken) return;
+  if (syncing) { syncAgain = true; return; }
+  syncing = true;
+  showSyncStatus("Syncing…");
+  try {
+    if (!sync.gistId) { sync.gistId = await findOrCreateGist(); writeSyncConfig(); }
+    let remote;
+    try {
+      remote = await readGist();
+    } catch (err) {
+      if (err.status !== 404) throw err;
+      sync.gistId = await findOrCreateGist(); // gist was deleted: start a new one
+      writeSyncConfig();
+      remote = await readGist();
+    }
+    // No awaits between merge and assignment, so edits made while fetching are kept.
+    const merged = remote ? mergeData(data, remote) : data;
+    const text = JSON.stringify(merged);
+    if (text !== JSON.stringify(data)) {
+      data = merged;
+      writeLocal();
+      if (view.name !== "log" && view.name !== "custom") render();
+    }
+    if (!remote || JSON.stringify(mergeData(remote, remote)) !== text) {
+      await gh("/gists/" + sync.gistId, { method: "PATCH", body: JSON.stringify({ files: { [GIST_FILE]: { content: text } } }) });
+    }
+    sync.lastSync = Date.now();
+    sync.error = "";
+  } catch (err) {
+    sync.error = navigator.onLine === false ? "Offline – will sync when back online." : err.message;
+  }
+  writeSyncConfig();
+  syncing = false;
+  showSyncStatus();
+  if (syncAgain) { syncAgain = false; scheduleSync(0); }
+}
+function syncStatusText() {
+  if (sync.error) return "⚠ " + sync.error;
+  if (!sync.lastSync) return "Not synced yet.";
+  const mins = Math.round((Date.now() - sync.lastSync) / 60000);
+  return "Synced " + (mins < 1 ? "just now" : mins < 60 ? mins + " min ago" : new Date(sync.lastSync).toLocaleString());
+}
+function showSyncStatus(text) {
+  const el = document.getElementById("sync-status");
+  if (el) el.textContent = text || syncStatusText();
 }
 
 /* ---------- Helpers ---------- */
@@ -342,7 +455,7 @@ const VIEWS = {
       '<label>Units</label><div class="seg">' + ["kg", "lb"].map((u) => '<button data-action="unit" data-id="' + u + '" class="' + (unit() === u ? "active" : "") + '">' + u + "</button>").join("") + "</div>" +
       '<label>Data</label><div class="muted" style="margin-bottom:10px">Your workouts stay on this device. Export a backup regularly.</div>' +
       '<div class="row"><button class="btn" data-action="export">Export backup</button><button class="btn" data-action="import">Import backup</button><button class="btn danger" data-action="reset">Reset app</button></div>' +
-      "</div></div>";
+      syncSettingsHTML() + "</div></div>";
     return html;
   },
 
@@ -440,6 +553,19 @@ const VIEWS = {
   },
 };
 
+function syncSettingsHTML() {
+  if (sync.token) {
+    return '<label>Cloud sync</label><div class="muted">GitHub Gist · <span id="sync-status">' + esc(syncStatusText()) + "</span></div>" +
+      '<div class="row" style="margin-top:10px"><button class="btn" data-action="sync-now">Sync now</button><button class="btn danger" data-action="sync-off">Disconnect</button></div>';
+  }
+  return '<label for="gtoken">Cloud sync (GitHub Gist)</label>' +
+    '<div class="muted" style="margin-bottom:10px">Keeps your workouts in a private gist so they survive clearing browser data and sync across devices. ' +
+    'Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener" style="color:#aaa">fine-grained token</a> ' +
+    'with only <b>Account permissions → Gists: Read and write</b>, then paste it here. It is stored only on this device.</div>' +
+    '<input id="gtoken" type="password" autocomplete="off" placeholder="github_pat_…">' +
+    '<div class="row" style="margin-top:10px"><button class="btn primary" data-action="sync-on">Connect</button></div>';
+}
+
 function backBtn(action, label, id = "") {
   return '<button class="btn back" data-action="' + action + '" data-id="' + esc(id) + '">← ' + esc(label) + "</button>";
 }
@@ -503,7 +629,29 @@ const ACTIONS = {
   custom: (id) => go("custom", { id: id || null }),
   filter: (g) => { libFilter = g; go("library"); },
   reload: () => location.reload(),
-  unit: (u) => { data.settings.unit = u; save(); render(); },
+  "sync-on": async () => {
+    const token = document.getElementById("gtoken").value.trim();
+    if (!token) return alert("Paste a GitHub token first.");
+    sync = { token };
+    writeSyncConfig();
+    render();
+    await runSync();
+    if (sync.error && !sync.lastSync) {
+      alert("Couldn't connect: " + sync.error);
+      sync = {};
+      writeSyncConfig();
+    }
+    render();
+  },
+  "sync-now": () => runSync(),
+  "sync-off": () => {
+    if (!confirm("Stop syncing on this device? Your data stays here and in the gist.")) return;
+    clearTimeout(syncTimer);
+    sync = {};
+    writeSyncConfig();
+    render();
+  },
+  unit: (u) => { Object.assign(data.settings, { unit: u, updatedAt: Date.now() }); save(); render(); },
 
   "edit-session": (sid) => {
     const s = findSession(sid);
@@ -512,7 +660,7 @@ const ACTIONS = {
   "delete-session": (sid) => {
     const s = findSession(sid);
     if (!s || !confirm("Delete the workout from " + fmtDate(s.date) + "?")) return;
-    data.sessions = data.sessions.filter((x) => x.id !== sid);
+    tombstone("sessions", [sid]);
     save();
     render();
   },
@@ -544,9 +692,9 @@ const ACTIONS = {
     const sid = el.dataset.session;
     if (sid) {
       const s = findSession(sid);
-      if (s) Object.assign(s, { date, sets, note });
+      if (s) Object.assign(s, { date, sets, note, updatedAt: Date.now() });
     } else {
-      data.sessions.push({ id: uid("s"), exerciseId: id, date, createdAt: Date.now(), sets, note });
+      data.sessions.push({ id: uid("s"), exerciseId: id, date, createdAt: Date.now(), updatedAt: Date.now(), sets, note });
     }
     save();
     go("exercise", { id });
@@ -560,9 +708,9 @@ const ACTIONS = {
     const group = canonGroup(document.getElementById("egroup").value, [...new Set(data.exercises.map((x) => x.group))]);
     const type = document.getElementById("etype").value;
     let e = id && findExercise(id);
-    if (e) Object.assign(e, { name, group, type, icon: iconFor(group) });
+    if (e) Object.assign(e, { name, group, type, icon: iconFor(group), updatedAt: Date.now() });
     else {
-      e = { id: uid("c"), name, group, type, icon: iconFor(group), builtin: false };
+      e = { id: uid("c"), name, group, type, icon: iconFor(group), builtin: false, updatedAt: Date.now() };
       data.exercises.push(e);
     }
     save();
@@ -573,8 +721,8 @@ const ACTIONS = {
     if (!e || e.builtin) return;
     const n = sessionsFor(id).length;
     if (!confirm('Delete "' + e.name + '"' + (n ? " and its " + n + " workout" + (n > 1 ? "s" : "") : "") + "?")) return;
-    data.exercises = data.exercises.filter((x) => x.id !== id);
-    data.sessions = data.sessions.filter((s) => s.exerciseId !== id);
+    tombstone("sessions", sessionsFor(id).map((s) => s.id));
+    tombstone("exercises", [id]);
     save();
     go("library");
   },
@@ -631,27 +779,41 @@ const ACTIONS = {
       // Same id but a different name on this device: give the import a fresh id.
       const id = ids.has(e.id) ? uid("c" + slug(e.name) + "-") : e.id;
       if (id !== e.id) remap.set(e.id, id);
-      data.exercises.push({ ...e, id });
+      data.exercises.push({ ...e, id, updatedAt: Date.now() });
+      delete data.deleted.exercises[id];
       ids.add(id);
       names.set(e.name.toLowerCase(), id);
     }
     const sids = new Set(data.sessions.map((s) => s.id));
     for (const s of pendingImport.sessions) {
       if (sids.has(s.id)) continue;
-      data.sessions.push({ ...s, exerciseId: remap.get(s.exerciseId) || s.exerciseId });
+      data.sessions.push({ ...s, exerciseId: remap.get(s.exerciseId) || s.exerciseId, updatedAt: Date.now() });
+      delete data.deleted.sessions[s.id];
     }
     finishImport();
   },
   "import-replace": () => {
     if (!pendingImport || !confirm("Replace all workouts on this device with the backup?") || !confirmAutoBackup()) return;
-    data = pendingImport;
+    // Record deletions for everything not in the backup so sync doesn't bring it back.
+    const keep = pendingImport;
+    tombstone("sessions", data.sessions.filter((s) => !keep.sessions.some((k) => k.id === s.id)).map((s) => s.id));
+    tombstone("exercises", data.exercises.filter((e) => !e.builtin && !keep.exercises.some((k) => k.id === e.id)).map((e) => e.id));
+    const now = Date.now();
+    for (const x of [...keep.sessions, ...keep.exercises]) if (!x.builtin) x.updatedAt = now;
+    for (const k of ["sessions", "exercises"]) {
+      keep.deleted[k] = { ...keep.deleted[k], ...data.deleted[k] };
+      for (const x of keep[k]) delete keep.deleted[k][x.id];
+    }
+    data = keep;
     finishImport();
   },
   reset: () => {
     if (!confirm("Delete ALL workouts and custom exercises from this device?")) return;
     if (!confirm("Are you sure? Export a backup first if unsure.")) return;
     if (!confirmAutoBackup()) return;
-    data = migrate({});
+    tombstone("sessions", data.sessions.map((s) => s.id));
+    tombstone("exercises", data.exercises.filter((e) => !e.builtin).map((e) => e.id));
+    data = migrate({ deleted: data.deleted, settings: data.settings });
     save();
     go("home");
   },
@@ -663,6 +825,60 @@ const ACTIONS = {
     render();
   },
 };
+
+/** Removes items and records when they were deleted, so other devices delete them too on sync. */
+function tombstone(kind, ids) {
+  const set = new Set(ids);
+  if (!set.size) return;
+  const now = Date.now();
+  for (const id of set) data.deleted[kind][id] = now;
+  data[kind] = data[kind].filter((x) => !set.has(x.id));
+}
+
+/**
+ * Combines two copies of the data (e.g. this device and the cloud) without losing edits:
+ * for each item the most recently updated version wins, and deletions win over older versions.
+ * Pure and deterministic, so every device converges to the same result.
+ */
+function mergeData(a, b) {
+  const deleted = { sessions: {}, exercises: {} };
+  for (const k of ["sessions", "exercises"]) {
+    for (const src of [a.deleted[k], b.deleted[k]]) {
+      for (const [id, t] of Object.entries(src)) deleted[k][id] = Math.max(deleted[k][id] || 0, t);
+    }
+  }
+  const newest = (list, kind) => {
+    const m = new Map();
+    for (const x of list) {
+      const cur = m.get(x.id);
+      if (!cur || (x.updatedAt || 0) > (cur.updatedAt || 0)) m.set(x.id, x);
+    }
+    return [...m.values()].filter((x) => !(deleted[kind][x.id] >= (x.updatedAt || 0)));
+  };
+  const allEx = [...a.exercises, ...b.exercises].filter((e) => !e.builtin);
+  // Same name created separately on two devices: keep the lowest id, move workouts to it.
+  const remap = new Map();
+  const byName = new Map(BUILTINS.map((x) => [x.name.toLowerCase(), x.id]));
+  const customs = [];
+  for (const e of newest(allEx, "exercises").sort((x, y) => (x.id < y.id ? -1 : 1))) {
+    const k = e.name.toLowerCase();
+    if (byName.has(k)) { remap.set(e.id, byName.get(k)); continue; }
+    byName.set(k, e.id);
+    customs.push(e);
+  }
+  const exIds = new Set([...BUILTINS.map((x) => x.id), ...customs.map((e) => e.id)]);
+  const sessions = newest([...a.sessions, ...b.sessions], "sessions")
+    .map((s) => (remap.has(s.exerciseId) ? { ...s, exerciseId: remap.get(s.exerciseId) } : s))
+    .filter((s) => exIds.has(s.exerciseId))
+    .sort((x, y) => (x.id < y.id ? -1 : 1));
+  return {
+    schemaVersion: SCHEMA,
+    settings: { ...((b.settings.updatedAt || 0) > (a.settings.updatedAt || 0) ? b.settings : a.settings) },
+    deleted,
+    exercises: [...BUILTINS.map((x) => ({ ...x })), ...customs.map((e) => ({ ...e }))],
+    sessions: sessions.map((s) => ({ ...s, sets: s.sets.map((z) => ({ ...z })) })),
+  };
+}
 
 /** Keeps the last AUTOBACKUP_KEEP snapshots taken before import/reset. Returns false if it couldn't be written. */
 function autoBackup() {
@@ -706,6 +922,9 @@ window.addEventListener("storage", (ev) => {
   // Don't wipe a form the user is filling in; the next save uses the fresh data.
   if (view.name !== "log" && view.name !== "custom") render();
 });
+
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") scheduleSync(0); });
+window.addEventListener("online", () => scheduleSync(0));
 
 /* ---------- Boot ---------- */
 data = load();

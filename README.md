@@ -8,7 +8,8 @@ A small offline-capable PWA for logging strength workouts. No build step, no dep
 - `sw.js` – network-first service worker (offline fallback). Bump `VERSION` if the asset list changes.
 
 ## Data
-Stored in `localStorage` under `strength-log-v3` (schema version 4). Weights are always stored in kg.
+Stored in `localStorage` under `strength-log-v3` (schema version 5). Weights are always stored in kg.
+Items carry `updatedAt`, and deletions are recorded in `deleted` so sync can merge copies without losing edits or resurrecting deleted items.
 
 Safety copies kept in the same browser:
 - `strength-log-premigrate-v*` – original data before a schema migration
@@ -17,6 +18,13 @@ Safety copies kept in the same browser:
 - `strength-log-corrupt-*` – unreadable data (the app never deletes it)
 
 Use **Export backup** regularly; **Import** offers Merge or Replace.
+
+## Cloud sync (GitHub Gist)
+Settings → Cloud sync. Paste a fine-grained GitHub token with only **Account permissions → Gists: Read and write**.
+The app keeps a private gist (`Strength Log sync`, file `strength-log.json`) in sync: it pulls and merges on open,
+when the app regains focus, when the network comes back, and ~1.5 s after each change.
+After clearing browser data or on a new device, paste the token again and everything is restored.
+The token is stored only in this browser (`strength-log-sync`) and is never included in exports or the gist.
 
 ## Deploy
 Push to GitHub Pages; the app is served from `/strength-log/`.
