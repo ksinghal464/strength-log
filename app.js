@@ -836,21 +836,32 @@ const RANGES = { "1M": 30, "3M": 91, "6M": 182, "1Y": 365, All: 0 };
 let chartMetric = null; // null = exercise's main metric
 let chartRange = "All";
 
+/** Whole-number axis: step from 1, 2, 5 × 10^k (and 25) giving ~3–5 gridlines (at most 3 intervals before snapping); bounds snapped to the step. */
+function niceAxis(min, max) {
+  if (max - min < 2) { min -= 1; max += 1; } // flat data: give it some room
+  const pad = (max - min) * 0.08;
+  min = Math.max(0, min - pad); max += pad;
+  const steps = [];
+  for (let k = 1; k <= 1e7; k *= 10) steps.push(k, 2 * k, 2.5 * k, 5 * k);
+  const step = steps.find((st) => st >= 1 && Number.isInteger(st) && (max - min) / st <= 3) || steps[steps.length - 1];
+  const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
+  const ticks = [];
+  for (let v = lo; v <= hi + 1e-9; v += step) ticks.push(v);
+  return { lo, hi, ticks };
+}
+
 /** Progress chart: grey line through workouts, white trend line, gold ★ on PRs, faded low-confidence points. */
 function chart(pts, metric) {
   const toV = (v) => (METRICS[metric].weight ? toUnit(v) : v);
   const W = 360, H = 200, P = { l: 38, r: 10, t: 14, b: 24 }; // ~phone width, so text isn't scaled down
   const vals = pts.map((p) => toV(p.v)), trend = pts.map((p) => toV(p.trend));
-  let lo = Math.min(...vals), hi = Math.max(...vals);
-  if (hi === lo) { hi += 1; lo = Math.max(0, lo - 1); }
-  const pad = (hi - lo) * 0.12; lo = Math.max(0, lo - pad); hi += pad;
+  const { lo, hi, ticks } = niceAxis(Math.min(...vals), Math.max(...vals));
   const t0 = Date.parse(pts[0].date), t1 = Date.parse(pts[pts.length - 1].date);
   const x = (d, i) => P.l + (W - P.l - P.r) * (t1 > t0 ? (Date.parse(d) - t0) / (t1 - t0) : i / Math.max(1, pts.length - 1));
   const y = (v) => P.t + (H - P.t - P.b) * (1 - (v - lo) / (hi - lo));
   const path = (vs) => vs.map((v, i) => (i ? "L" : "M") + x(pts[i].date, i).toFixed(1) + " " + y(v).toFixed(1)).join(" ");
-  const label = (v) => (hi - lo >= 30 ? Math.round(v) : round1(v));
-  const grid = [lo, (lo + hi) / 2, hi].map((v) =>
-    '<line x1="' + P.l + '" x2="' + (W - P.r) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#262626"/><text x="' + (P.l - 6) + '" y="' + (y(v) + 3) + '" text-anchor="end">' + label(v) + "</text>"
+  const grid = ticks.map((v) =>
+    '<line x1="' + P.l + '" x2="' + (W - P.r) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#262626"/><text x="' + (P.l - 6) + '" y="' + (y(v) + 3) + '" text-anchor="end">' + v.toLocaleString() + "</text>"
   ).join("");
   const labels = '<text x="' + P.l + '" y="' + (H - 6) + '">' + esc(fmtDate(pts[0].date)) + '</text><text x="' + (W - P.r) + '" y="' + (H - 6) + '" text-anchor="end">' + esc(fmtDate(pts[pts.length - 1].date)) + "</text>";
   const marks = pts.map((p, i) => {
