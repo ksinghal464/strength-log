@@ -72,7 +72,7 @@ function canonGroup(g, existing) {
 }
 
 /* ---------- Storage ---------- */
-const APP_VERSION = "v28"; // keep in sync with VERSION in sw.js; shown in Settings
+const APP_VERSION = "v29"; // keep in sync with VERSION in sw.js; shown in Settings
 const KEY = "strength-log-v3";
 const LEGACY_KEYS = ["strength-log-v2"];
 const SCHEMA = 5; // 5: updatedAt on items + deletion tombstones (for sync)
@@ -547,44 +547,41 @@ function fmtChange(ch, m) {
   return '<span class="change ' + (up ? "up" : "down") + '">' + (up ? "▲ +" : "▼ −") + esc(d) + " (" + (up ? "+" : "−") + Math.abs(ch.pct).toFixed(0) + "%)</span>";
 }
 
-function weekCardHTML() {
+/** This week vs last week (sets, volume) and exercises that have plateaued. */
+function progressCardHTML(byEx) {
   const today = new Date();
-  const mon = mondayOf(today);
-  const monISO = localDate(mon);
-  const thisWeek = data.sessions.filter((s) => s.date >= monISO);
-  const days = new Set(thisWeek.map((s) => s.date)).size;
-  const sets = thisWeek.reduce((a, s) => a + s.sets.length, 0);
-  const trained = new Set(data.sessions.map((s) => s.date));
-  let strip = "";
-  for (let k = 11; k >= 0; k--) {
-    const start = addDays(mon, -7 * k);
-    let c = 0;
-    for (let d = 0; d < 7; d++) if (trained.has(localDate(addDays(start, d)))) c++;
-    strip += '<i class="l' + Math.min(c, 3) + '" title="Week of ' + esc(fmtDate(localDate(start))) + ": " + c + ' training day(s)"></i>';
+  const monISO = localDate(mondayOf(today));
+  const prevISO = localDate(addDays(mondayOf(today), -7));
+  const thisWk = data.sessions.filter((s) => s.date >= monISO);
+  const lastWk = data.sessions.filter((s) => s.date >= prevISO && s.date < monISO);
+  const volume = (ss) => ss.reduce((a, s) => { const e = exOf(s); return a + s.sets.reduce((b, z) => b + loadOf(z, e) * z.reps, 0); }, 0);
+  const setsOf = (ss) => ss.reduce((a, s) => a + s.sets.length, 0);
+  const vThis = volume(thisWk), vLast = volume(lastWk);
+  let weekLine = '<div class="stats">' + stat(setsOf(thisWk), "Sets this week") + stat(setsOf(lastWk), "Sets last week") + "</div>";
+  if (vLast > 0) {
+    const diff = vThis - vLast;
+    weekLine += '<div style="margin-top:8px">Volume ' + fmtChange({ diff, pct: (diff / vLast) * 100 }, "volume") + " vs last week</div>";
   }
-  return '<div class="card"><b>This week</b>' +
-    '<div class="stats">' + stat(days, "Days trained") + stat(sets, "Sets") + "</div>" +
-    '<div class="muted" style="margin-top:12px">Training days per week · last 12 weeks</div><div class="week-strip">' + strip + "</div></div>";
-}
 
-function prsCardHTML(byEx) {
-  const prs = [];
+  // Plateau: trained in the last 2 weeks, but no new best est. 1RM in the last 6 weeks.
+  const from14 = localDate(addDays(today, -14)), from42 = localDate(addDays(today, -42));
+  const stalled = [];
   for (const [id, list] of byEx) {
     const e = findExercise(id);
-    if (!e) continue;
-    const m = primaryMetric(list);
-    // Skip each exercise's first workout here, or every new exercise would show up as a "PR".
-    for (const p of series(list, m).slice(1)) if (p.pr) prs.push({ e, m, p, s: list.find((x) => x.id === p.id) });
+    if (!e || list.length < 3 || !isWeighted(list)) continue;
+    const lastSession = list.reduce((d, s) => (s.date > d ? s.date : d), "");
+    if (lastSession < from14) continue;
+    const prPts = series(list, "e1rm").filter((p) => p.pr);
+    const lastPR = prPts.length ? prPts[prPts.length - 1].date : "";
+    if (lastPR < from42) stalled.push({ e, lastPR });
   }
-  if (!prs.length) return "";
-  prs.sort((a, b) => b.p.date.localeCompare(a.p.date));
-  const seen = new Set(); // latest PR per exercise
-  const latest = prs.filter((x) => !seen.has(x.e.id) && seen.add(x.e.id));
-  return '<div class="section"><h3>Recent PRs</h3>' + latest.slice(0, 5).map(({ e, m, p, s }) => {
-    const z = m === "e1rm" ? bestE1rmSet(s) : null;
-    const sub = (z ? fmtSet(z) + " · est. 1RM " + fmtMetric(p.v, m) : fmtMetric(p.v, m)) + " · " + fmtDate(p.date);
-    return exerciseRow(e, "★ " + sub);
-  }).join("") + "</div>";
+  stalled.sort((a, b) => a.lastPR.localeCompare(b.lastPR));
+  const plateau = stalled.length
+    ? '<div class="muted" style="margin-top:14px">Plateaued · no new best est. 1RM in 6+ weeks</div>' +
+      stalled.slice(0, 5).map(({ e, lastPR }) => exerciseRow(e, "Last best " + fmtDate(lastPR))).join("")
+    : '<div class="muted" style="margin-top:14px">No plateaus: every recently trained lift has set a best in the last 6 weeks.</div>';
+
+  return '<div class="section"><div class="card"><b>Progress</b>' + weekLine + plateau + "</div></div>";
 }
 
 /** Sets per muscle group in the last 7 days, with a 10–20 sets/week guide band. */
@@ -631,7 +628,7 @@ const VIEWS = {
     if (!byEx.size) {
       return html + '<div class="card empty">No exercises logged yet.<br><br><button class="btn primary" data-action="library">Choose an exercise</button></div>' + settingsHTML();
     }
-    html += weekCardHTML() + prsCardHTML(byEx) + muscleCardHTML();
+    html += progressCardHTML(byEx) + muscleCardHTML();
 
     // Only the most recent workout days here; the full list lives on the History page.
     const all = workoutDays();

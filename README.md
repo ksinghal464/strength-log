@@ -11,7 +11,7 @@ A small offline-capable PWA for logging strength workouts. No build step, no dep
 - **Main metric:** estimated 1RM (Epley) of each workout's best set. Bodyweight exercises track best reps. Sets over 12 reps are drawn faded (rough estimate).
 - **Exercise page:** chart with workout dots, trend line (best of last 3 workouts), ★ PRs; toggle Est. 1RM / Top weight / Volume;
   range 1M–All; tap/drag the chart for exact values (date, value, best set, PR); 8-week change.
-- **Home:** this week (days trained, sets) + 12-week consistency strip, latest PR per exercise, sets per muscle group
+- **Home:** progress (sets and volume this week vs last week, plateaued lifts with no new best est. 1RM in 6+ weeks), sets per muscle group
   over the last 7 days vs a 10–20 sets/week guide band, and workout history grouped by date
   (last 3 weeks, with "Show more").
 
