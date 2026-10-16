@@ -7,13 +7,22 @@ A small offline-capable PWA for logging strength workouts. No build step, no dep
 - `app.css` – styles
 - `sw.js` – network-first service worker (offline fallback). Bump `VERSION` if the asset list changes.
 
+## Navigation
+Bottom tab bar, with the page in the URL hash (`#/insights`, `#/exercise/<id>`) so the phone's back button works.
+Form pages (log workout, custom exercise, import) hide the tab bar.
+- **Today:** today's logged exercises, this week's workouts / sets / streak / PRs, and your recent exercises
+  (least recently trained first) with a quick **+ Log** button.
+- **Activity:** 16-week calendar heatmap (shaded by sets per day) and full history grouped by month and day.
+- **Insights:** consistency (week streaks, workouts per week, last 4 weeks vs the 4 before), weekly sets bar chart
+  and volume this week so far vs last week up to the same weekday, PRs in the last 30 days, sets per muscle group
+  over the last 7 days vs a 10–20 sets/week guide band, and plateaued lifts (no new best est. 1RM in 6+ weeks).
+- **Exercises:** library with search and muscle-group filters, custom exercises.
+- **Settings:** units, backup export/import, reset, cloud sync, app version.
+
 ## Progress tracking
 - **Main metric:** estimated 1RM (Epley) of each workout's best set. Bodyweight exercises track best reps. Sets over 12 reps are drawn faded (rough estimate).
 - **Exercise page:** chart with workout dots, trend line (best of last 3 workouts), ★ PRs; toggle Est. 1RM / Top weight / Volume;
   range 1M–All; tap/drag the chart for exact values (date, value, best set, PR); 8-week change.
-- **Home:** progress (sets and volume this week vs last week, plateaued lifts with no new best est. 1RM in 6+ weeks), sets per muscle group
-  over the last 7 days vs a 10–20 sets/week guide band, and workout history grouped by date
-  (last 3 weeks, with "Show more").
 
 ## Data
 Stored in `localStorage` under `strength-log-v3` (schema version 5). Weights are always stored in kg.

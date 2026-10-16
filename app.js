@@ -75,7 +75,7 @@ function canonGroup(g, existing) {
 }
 
 /* ---------- Storage ---------- */
-const APP_VERSION = "v31"; // keep in sync with VERSION in sw.js; shown in Settings
+const APP_VERSION = "v32"; // keep in sync with VERSION in sw.js; shown in Settings
 const KEY = "strength-log-v3";
 const LEGACY_KEYS = ["strength-log-v2"];
 const SCHEMA = 5; // 5: updatedAt on items + deletion tombstones (for sync)
@@ -486,9 +486,8 @@ const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); r
 
 /* ---------- Rendering ---------- */
 const app = document.getElementById("app");
-let view = { name: "home" };
+let view = { name: "today", tab: "today" };
 let libFilter = "All";
-const HOME_DAYS = 2; // workout days shown on the home page
 let libQuery = "";
 
 /** Sessions grouped by workout date, newest first: [[date, sessions[]], ...]. */
@@ -510,14 +509,63 @@ function dayHTML([d, list]) {
     list.map((s) => exerciseRow(findExercise(s.exerciseId), s.sets.length + " set" + (s.sets.length === 1 ? "" : "s") + " · best " + sessionSummary(s))).join("") + "</div>";
 }
 
-function go(name, params = {}) {
-  view = { name, ...params };
+/* ---------- Navigation ----------
+ * Bottom tabs + URL hash (#/insights, #/exercise/<id>, #/log/<id>/<sessionId>) so the
+ * phone's back button works. Detail pages keep the tab they were opened from highlighted.
+ */
+const TABS = [
+  ["today", "Today", '<path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="5"/>'],
+  ["activity", "Activity", '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>'],
+  ["insights", "Insights", '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'],
+  ["library", "Exercises", '<path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11"/>'],
+  ["settings", "Settings", '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>'],
+];
+let navDepth = 0; // in-app pages on the history stack, so Back never leaves the app
+const TAB_NAMES = new Set(TABS.map((t) => t[0]));
+const FORM_VIEWS = new Set(["log", "custom", "import"]); // no tab bar: keeps forms clear of the keyboard
+
+function viewHash(v) {
+  const parts = [v.name];
+  if (v.id) parts.push(v.id);
+  if (v.sessionId) parts.push(v.sessionId);
+  return "#/" + parts.map(encodeURIComponent).join("/");
+}
+function viewFromHash(h) {
+  const [name, id, sessionId] = String(h || "").replace(/^#\/?/, "").split("/").map((s) => { try { return decodeURIComponent(s); } catch (_) { return ""; } });
+  if (name === "home" || name === "history") return { name: name === "home" ? "today" : "activity" };
+  if (!VIEWS[name] || name === "import") return { name: "today" };
+  return { name, ...(id ? { id } : {}), ...(sessionId ? { sessionId } : {}) };
+}
+/** opts.replace: swap out the current page (e.g. a submitted form) instead of stacking a new one. */
+function go(name, params = {}, opts = {}) {
+  if (name === "home") name = "today";
+  const tab = TAB_NAMES.has(name) ? name : view.tab || (name === "exercise" || name === "custom" ? "library" : "today");
+  view = { name, ...params, tab };
+  const h = viewHash(view);
+  if (opts.replace) history.replaceState(null, "", h);
+  else if (location.hash !== h) { history.pushState(null, "", h); navDepth++; }
   render();
   window.scrollTo(0, 0);
 }
+window.addEventListener("popstate", () => {
+  navDepth = Math.max(0, navDepth - 1);
+  const prevTab = view.tab;
+  view = viewFromHash(location.hash);
+  view.tab = TAB_NAMES.has(view.name) ? view.name : prevTab;
+  if (location.hash !== viewHash(view)) history.replaceState(null, "", viewHash(view)); // e.g. a hand-typed bad hash
+  render();
+});
+function tabBarHTML() {
+  if (FORM_VIEWS.has(view.name)) return "";
+  const active = TAB_NAMES.has(view.name) ? view.name : view.tab;
+  return '<nav class="tabbar">' + TABS.map(([id, label, icon]) =>
+    '<button data-action="tab" data-id="' + id + '"' + (id === active ? ' class="active" aria-current="page"' : "") + ">" +
+    '<svg viewBox="0 0 24 24" aria-hidden="true">' + icon + "</svg><span>" + label + "</span></button>"
+  ).join("") + "</nav>";
+}
 
 function render() {
-  const fn = VIEWS[view.name] || VIEWS.home;
+  const fn = VIEWS[view.name] || VIEWS.today;
   let banner = "";
   if (storageBroken && brokenReason === "newer") {
     banner += '<div class="banner"><b>This data was saved by a newer version of Strength Log.</b> It is shown read-only and changes are <b>not being saved</b>. Reload to get the latest version, or <button class="btn small" data-action="unlock-storage">start fresh</button> (a copy is kept as <code>strength-log-newer-*</code>).</div>';
@@ -530,7 +578,7 @@ function render() {
   if (updateReady) {
     banner += '<div class="banner info">A new version is available. <button class="btn small" data-action="reload">Reload</button></div>';
   }
-  app.innerHTML = banner + fn(view);
+  app.innerHTML = banner + fn(view) + tabBarHTML();
   if (view.name === "library") renderLibraryList();
 }
 
@@ -552,41 +600,159 @@ function fmtChange(ch, m) {
   return '<span class="change ' + (up ? "up" : "down") + '">' + (up ? "▲ +" : "▼ −") + esc(d) + " (" + (up ? "+" : "−") + Math.abs(ch.pct).toFixed(0) + "%)</span>";
 }
 
-/** This week vs last week (sets, volume) and exercises that have plateaued. */
-function progressCardHTML(byEx) {
-  const today = new Date();
-  const monISO = localDate(mondayOf(today));
-  const prevISO = localDate(addDays(mondayOf(today), -7));
-  const thisWk = data.sessions.filter((s) => s.date >= monISO);
-  const lastWk = data.sessions.filter((s) => s.date >= prevISO && s.date < monISO);
-  const volume = (ss) => ss.reduce((a, s) => { const e = exOf(s); return a + s.sets.reduce((b, z) => b + loadOf(z, e) * z.reps, 0); }, 0);
-  const setsOf = (ss) => ss.reduce((a, s) => a + s.sets.length, 0);
-  const vThis = volume(thisWk), vLast = volume(lastWk);
-  let weekLine = '<div class="stats">' + stat(setsOf(thisWk), "Sets this week") + stat(setsOf(lastWk), "Sets last week") + "</div>";
-  if (vLast > 0) {
-    const diff = vThis - vLast;
-    weekLine += '<div style="margin-top:8px">Volume ' + fmtChange({ diff, pct: (diff / vLast) * 100 }, "volume") + " vs last week</div>";
-  }
+/* ---------- Insights helpers ---------- */
+const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+const daysAgo = (iso) => Math.round((Date.parse(localDate() + "T00:00:00") - Date.parse(iso + "T00:00:00")) / DAY);
+const agoText = (iso) => { const n = daysAgo(iso); return n <= 0 ? "today" : n === 1 ? "yesterday" : n + " days ago"; };
+const weekKey = (iso) => localDate(mondayOf(new Date(iso + "T00:00:00")));
+const sessionVolume = (s) => METRICS.volume.of(s);
 
-  // Plateau: trained in the last 2 weeks, but no new best est. 1RM in the last 6 weeks.
+/** Sessions of known exercises, grouped by exercise id. */
+function sessionsByExercise() {
+  const byEx = new Map();
+  for (const s of data.sessions) {
+    if (!findExercise(s.exerciseId)) continue;
+    if (!byEx.has(s.exerciseId)) byEx.set(s.exerciseId, []);
+    byEx.get(s.exerciseId).push(s);
+  }
+  return byEx;
+}
+
+/** Per-week totals for the last n weeks, oldest first: [{ week, sets, days }]. */
+function weeklyTotals(n) {
+  const mon = mondayOf(new Date());
+  const weeks = [];
+  for (let i = n - 1; i >= 0; i--) weeks.push({ week: localDate(addDays(mon, -7 * i)), sets: 0, days: new Set() });
+  const idx = new Map(weeks.map((w, i) => [w.week, i]));
+  for (const s of data.sessions) {
+    const i = idx.get(weekKey(s.date));
+    if (i === undefined || !exOf(s)) continue;
+    weeks[i].sets += s.sets.length;
+    weeks[i].days.add(s.date);
+  }
+  return weeks.map((w) => ({ ...w, days: w.days.size }));
+}
+
+/** Consecutive weeks with at least one workout. The current week only counts once trained. */
+function weekStreaks() {
+  const weeks = new Set(data.sessions.filter(exOf).map((s) => weekKey(s.date)));
+  let w = mondayOf(new Date());
+  if (!weeks.has(localDate(w))) w = addDays(w, -7);
+  let current = 0;
+  while (weeks.has(localDate(w))) { current++; w = addDays(w, -7); }
+  let best = 0, run = 0, prev = null;
+  for (const k of [...weeks].sort()) {
+    run = prev && localDate(addDays(new Date(prev + "T00:00:00"), 7)) === k ? run + 1 : 1;
+    best = Math.max(best, run);
+    prev = k;
+  }
+  return { current, best };
+}
+
+/** Workout days per week, averaged over the last 4 weeks and the 4 before. */
+function frequency() {
+  const today = new Date();
+  const from4 = localDate(addDays(today, -27)), from8 = localDate(addDays(today, -55));
+  const recent = new Set(), before = new Set();
+  for (const s of data.sessions) {
+    if (!exOf(s)) continue;
+    if (s.date >= from4) recent.add(s.date);
+    else if (s.date >= from8) before.add(s.date);
+  }
+  return { recent: recent.size / 4, before: before.size / 4 };
+}
+
+/** New bests in the main metric (not counting an exercise's first workout), newest first. */
+function recentPRs(days) {
+  const from = localDate(addDays(new Date(), -days));
+  const out = [];
+  for (const [id, list] of sessionsByExercise()) {
+    const m = primaryMetric(list);
+    const pts = series(list, m);
+    let prevBest = pts.length ? pts[0].v : 0;
+    for (let i = 1; i < pts.length; i++) {
+      const p = pts[i];
+      if (p.pr && p.date >= from) out.push({ e: findExercise(id), m, date: p.date, v: p.v, diff: p.v - prevBest });
+      prevBest = Math.max(prevBest, p.v);
+    }
+  }
+  return out.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/* ---------- Insights cards ---------- */
+function consistencyCardHTML() {
+  const st = weekStreaks(), fq = frequency();
+  const wk = weeklyTotals(1)[0];
+  const trend = fq.before > 0
+    ? '<div class="muted" style="margin-top:8px">Workouts per week: <b style="color:#fff">' + fq.recent.toFixed(1) + "</b> over the last 4 weeks vs " + fq.before.toFixed(1) + " the 4 weeks before</div>"
+    : "";
+  return '<div class="card"><b>Consistency</b><div class="stats">' +
+    stat(plural(st.current, "week"), "Current streak") + stat(plural(st.best, "week"), "Best streak") +
+    stat(wk.days, "Workouts this week") + stat(fq.recent.toFixed(1), "Avg / week (4 wk)") + "</div>" + trend + "</div>";
+}
+
+/** Bar chart of sets per week (last 12 weeks), with this week vs last week volume. */
+function weeklyCardHTML() {
+  const weeks = weeklyTotals(12);
+  const W = 360, H = 150, P = { l: 8, r: 8, t: 18, b: 22 };
+  const max = Math.max(10, ...weeks.map((w) => w.sets));
+  const bw = (W - P.l - P.r) / weeks.length;
+  const bars = weeks.map((w, i) => {
+    const h = ((H - P.t - P.b) * w.sets) / max;
+    const x = P.l + i * bw + 3, y = H - P.b - h;
+    const cur = i === weeks.length - 1;
+    return '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (bw - 6).toFixed(1) + '" height="' + Math.max(h, w.sets ? 2 : 0).toFixed(1) + '" rx="3" fill="' + (cur ? "#fff" : "#555") + '"><title>' +
+      esc("Week of " + fmtDate(w.week) + ": " + plural(w.sets, "set")) + "</title></rect>" +
+      (w.sets ? '<text x="' + (x + (bw - 6) / 2).toFixed(1) + '" y="' + (y - 4).toFixed(1) + '" text-anchor="middle">' + w.sets + "</text>" : "");
+  }).join("");
+  const short = (iso) => new Date(iso + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const labels = '<text x="' + P.l + '" y="' + (H - 6) + '">' + esc(short(weeks[0].week)) + '</text><text x="' + (W - P.r) + '" y="' + (H - 6) + '" text-anchor="end">This week</text>';
+  // Compare this week so far with last week up to the same weekday, so a half-done week isn't "down".
+  const mon = mondayOf(new Date());
+  const thisFrom = localDate(mon), prevFrom = localDate(addDays(mon, -7));
+  const prevTo = localDate(addDays(new Date(), -7));
+  const volumeIn = (from, to) => data.sessions.reduce((a, s) => (s.date >= from && s.date <= to && exOf(s) ? a + sessionVolume(s) : a), 0);
+  const vCur = volumeIn(thisFrom, localDate()), vPrev = volumeIn(prevFrom, prevTo);
+  let vs = "";
+  if (vPrev > 0) {
+    const diff = vCur - vPrev;
+    vs = '<div style="margin-top:8px">Volume ' + fmtChange({ diff, pct: (diff / vPrev) * 100 }, "volume") + '</div><div class="muted">This week so far vs last week up to ' +
+      esc(new Date().toLocaleDateString(undefined, { weekday: "long" })) + "</div>";
+  }
+  return '<div class="card"><b>Weekly sets</b><div class="muted">Last 12 weeks · this week in white</div>' +
+    '<svg class="chart bars" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Sets per week, last 12 weeks">' + bars + labels + "</svg>" + vs + "</div>";
+}
+
+function prCardHTML() {
+  const prs = recentPRs(30);
+  const body = prs.length
+    ? prs.slice(0, 6).map((p) => {
+      const val = p.m === "e1rm" ? "Est. 1RM " + fmtMetric(p.v, p.m) : fmtMetric(p.v, p.m);
+      const gain = p.diff > 0 ? '<span class="change up">+' + esc(p.m === "e1rm" ? toUnit(p.diff) + " " + unit() : Math.round(p.diff) + " reps") + "</span>" : "";
+      return exerciseRow(p.e, val + " · " + agoText(p.date), gain);
+    }).join("")
+    : '<div class="muted" style="margin-top:6px">No new bests in the last 30 days.</div>';
+  return '<div class="card"><b>Personal records</b><div class="muted">New bests in the last 30 days' + (prs.length > 6 ? " · " + prs.length + " total" : "") + "</div>" + body + "</div>";
+}
+
+/** Trained in the last 2 weeks, but no new best est. 1RM in the last 6 weeks. */
+function plateauCardHTML() {
+  const today = new Date();
   const from14 = localDate(addDays(today, -14)), from42 = localDate(addDays(today, -42));
   const stalled = [];
-  for (const [id, list] of byEx) {
-    const e = findExercise(id);
-    if (!e || list.length < 3 || !isWeighted(list)) continue;
+  for (const [id, list] of sessionsByExercise()) {
+    if (list.length < 3 || !isWeighted(list)) continue;
     const lastSession = list.reduce((d, s) => (s.date > d ? s.date : d), "");
     if (lastSession < from14) continue;
     const prPts = series(list, "e1rm").filter((p) => p.pr);
     const lastPR = prPts.length ? prPts[prPts.length - 1].date : "";
-    if (lastPR < from42) stalled.push({ e, lastPR });
+    if (lastPR < from42) stalled.push({ e: findExercise(id), lastPR });
   }
   stalled.sort((a, b) => a.lastPR.localeCompare(b.lastPR));
-  const plateau = stalled.length
-    ? '<div class="muted" style="margin-top:14px">Plateaued · no new best est. 1RM in 6+ weeks</div>' +
+  return '<div class="card"><b>Plateaus</b>' + (stalled.length
+    ? '<div class="muted">No new best est. 1RM in 6+ weeks. Try adding a rep or a small plate.</div>' +
       stalled.slice(0, 5).map(({ e, lastPR }) => exerciseRow(e, "Last best " + fmtDate(lastPR))).join("")
-    : '<div class="muted" style="margin-top:14px">No plateaus: every recently trained lift has set a best in the last 6 weeks.</div>';
-
-  return '<div class="section"><div class="card"><b>Progress</b>' + weekLine + plateau + "</div></div>";
+    : '<div class="muted" style="margin-top:6px">None: every recently trained lift has set a best in the last 6 weeks.</div>') + "</div>";
 }
 
 /** Sets per muscle group in the last 7 days, with a 10–20 sets/week guide band. */
@@ -612,42 +778,80 @@ function muscleCardHTML() {
     ).join("") + "</div>";
 }
 
+/** Last 16 weeks, one square per day (Mon top), shaded by sets logged. */
+function heatmapHTML() {
+  const WEEKS = 16;
+  const sets = new Map();
+  for (const s of data.sessions) if (exOf(s)) sets.set(s.date, (sets.get(s.date) || 0) + s.sets.length);
+  const start = addDays(mondayOf(new Date()), -7 * (WEEKS - 1));
+  const today = localDate();
+  let cells = "";
+  for (let i = 0; i < WEEKS * 7; i++) {
+    const d = localDate(addDays(start, i));
+    const n = sets.get(d) || 0;
+    const lvl = d > today ? " future" : n >= 20 ? " l3" : n >= 10 ? " l2" : n > 0 ? " l1" : "";
+    cells += '<i class="' + lvl.trim() + '" title="' + esc(fmtDate(d) + (n ? " · " + plural(n, "set") : "")) + '"></i>';
+  }
+  const days = new Set([...sets.keys()].filter((d) => d >= localDate(start) && d <= today)).size;
+  return '<div class="card"><div class="card-head"><b>Last 16 weeks</b><span class="muted">' + plural(days, "workout day") + "</span></div>" +
+    '<div class="heat">' + cells + "</div>" +
+    '<div class="legend"><span>Less</span><span class="heat-key"><i></i><i class="l1"></i><i class="l2"></i><i class="l3"></i></span><span>More · 1–9 / 10–19 / 20+ sets</span></div></div>';
+}
+
+/** Exercises you train regularly that weren't done today, most overdue first. */
+function suggestionsHTML() {
+  const today = localDate(), from42 = localDate(addDays(new Date(), -42));
+  const doneToday = new Set(data.sessions.filter((s) => s.date === today).map((s) => s.exerciseId));
+  const rows = [];
+  for (const [id, list] of sessionsByExercise()) {
+    if (doneToday.has(id)) continue;
+    const recent = list.filter((s) => s.date >= from42);
+    if (!recent.length) continue;
+    rows.push({ e: findExercise(id), last: lastFor(id), n: recent.length });
+  }
+  rows.sort((a, b) => a.last.date.localeCompare(b.last.date) || b.n - a.n);
+  if (!rows.length) return "";
+  return '<div class="top" style="margin:22px 0 0"><h3>Your exercises</h3><span class="muted">Least recently trained first</span></div>' +
+    rows.slice(0, 8).map(({ e, last }) => exerciseRow(e, sessionSummary(last) + " · " + agoText(last.date),
+      '<span class="btn small primary" data-action="log" data-id="' + esc(e.id) + '">+ Log</span>')).join("");
+}
+
 function settingsHTML() {
-  return '<div class="section"><div class="card"><b>Settings</b>' +
-    '<label>Units</label><div class="seg">' + ["kg", "lb"].map((u) => '<button data-action="unit" data-id="' + u + '" class="' + (unit() === u ? "active" : "") + '">' + u + "</button>").join("") + "</div>" +
+  return '<div class="card">' +
+    '<label style="margin-top:0">Units</label><div class="seg">' + ["kg", "lb"].map((u) => '<button data-action="unit" data-id="' + u + '" class="' + (unit() === u ? "active" : "") + '">' + u + "</button>").join("") + "</div>" +
     '<label>Data</label><div class="muted" style="margin-bottom:10px">Your workouts stay on this device. Export a backup regularly.</div>' +
     '<div class="row"><button class="btn" data-action="export">Export backup</button><button class="btn" data-action="import">Import backup</button><button class="btn danger" data-action="reset">Reset app</button></div>' +
     syncSettingsHTML() +
-    '<div class="muted" style="margin-top:16px">App version ' + APP_VERSION + "</div></div></div>";
+    '<div class="muted" style="margin-top:16px">App version ' + APP_VERSION + "</div></div>";
 }
 
 const VIEWS = {
-  home() {
-    let html = '<div class="top"><div><h1>Strength Log</h1><div class="muted">Log. Compare. Get stronger.</div></div><button class="btn" data-action="library">+ Exercise</button></div>';
-    const byEx = new Map();
-    for (const s of data.sessions) {
-      if (!findExercise(s.exerciseId)) continue;
-      if (!byEx.has(s.exerciseId)) byEx.set(s.exerciseId, []);
-      byEx.get(s.exerciseId).push(s);
+  today() {
+    const today = localDate();
+    const done = data.sessions.filter((s) => s.date === today && exOf(s)).sort(byOldest);
+    const dateLabel = new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+    let html = '<div class="top"><div><h1>Today</h1><div class="muted">' + esc(dateLabel) + '</div></div><button class="btn" data-action="library">+ Exercise</button></div>';
+    if (!data.sessions.length) {
+      return html + '<div class="card empty">No exercises logged yet.<br><br><button class="btn primary" data-action="library">Choose an exercise</button></div>';
     }
-    if (!byEx.size) {
-      return html + '<div class="card empty">No exercises logged yet.<br><br><button class="btn primary" data-action="library">Choose an exercise</button></div>' + settingsHTML();
+    if (done.length) {
+      html += dayHTML([today, done]);
+    } else {
+      const last = workoutDays()[0];
+      html += '<div class="card"><b>No workout logged yet today</b>' +
+        (last ? '<div class="muted" style="margin-top:4px">Last workout ' + esc(agoText(last[0])) + " · " + esc(plural(last[1].length, "exercise")) + "</div>" : "") + "</div>";
     }
-    html += progressCardHTML(byEx) + muscleCardHTML();
-
-    // Only the most recent workout days here; the full list lives on the History page.
-    const all = workoutDays();
-    html += '<div class="top" style="margin-top:20px"><h3>Recent workouts</h3>' +
-      (all.length > HOME_DAYS ? '<button class="btn small" data-action="history">View all ›</button>' : "") + "</div>";
-    html += all.slice(0, HOME_DAYS).map(dayHTML).join("");
-    return html + settingsHTML();
+    const wk = weeklyTotals(1)[0], st = weekStreaks();
+    html += '<div class="stats">' + stat(wk.days, "Workouts this week") + stat(wk.sets, "Sets this week") +
+      stat(plural(st.current, "week"), "Streak") + stat(recentPRs(7).length, "PRs this week") + "</div>";
+    return html + suggestionsHTML();
   },
 
-  history() {
+  activity() {
     const all = workoutDays();
-    let html = backBtn("home", "Back") +
-      '<div class="top"><div><h2>History</h2><div class="muted">' + all.length + " workout day" + (all.length === 1 ? "" : "s") + "</div></div></div>";
+    let html = '<div class="top"><div><h1>Activity</h1><div class="muted">' + plural(all.length, "workout day") + "</div></div></div>";
     if (!all.length) return html + '<div class="card empty">No workouts logged yet.</div>';
+    html += heatmapHTML();
     let month = "";
     for (const day of all) {
       const m = new Date(day[0] + "T00:00").toLocaleDateString(undefined, { month: "long", year: "numeric" });
@@ -657,14 +861,23 @@ const VIEWS = {
     return html;
   },
 
+  insights() {
+    const html = '<div class="top"><div><h1>Insights</h1><div class="muted">How your training is going</div></div></div>';
+    if (!sessionsByExercise().size) return html + '<div class="card empty">Log a few workouts to see insights.</div>';
+    return html + consistencyCardHTML() + weeklyCardHTML() + prCardHTML() + muscleCardHTML() + plateauCardHTML();
+  },
+
+  settings() {
+    return '<div class="top"><div><h1>Settings</h1></div></div>' + settingsHTML();
+  },
+
   library() {
     const groups = Object.keys(CATALOG);
     const customGroups = [...new Set(data.exercises.filter((e) => !e.builtin).map((e) => e.group))].filter((g) => !groups.includes(g));
     const all = ["All", ...groups, ...customGroups];
     if (!all.includes(libFilter)) libFilter = "All";
     const chips = all.map((g) => '<button class="chip' + (g === libFilter ? " active" : "") + '" data-action="filter" data-id="' + esc(g) + '">' + esc(g) + "</button>").join("");
-    return backBtn("home", "Back") +
-      '<div class="top"><div><h2>Exercise library</h2><div class="muted">' + data.exercises.length + " exercises · " + (all.length - 1) + ' muscle groups</div></div><button class="btn" data-action="custom">+ Custom</button></div>' +
+    return '<div class="top"><div><h1>Exercises</h1><div class="muted">' + data.exercises.length + " exercises · " + (all.length - 1) + ' muscle groups</div></div><button class="btn" data-action="custom">+ Custom</button></div>' +
       '<div class="search"><input id="q" type="search" placeholder="Search exercises..." value="' + esc(libQuery) + '"></div>' +
       '<div class="chips">' + chips + '</div><div id="lib"></div>';
   },
@@ -674,7 +887,7 @@ const VIEWS = {
     if (id && (!e || e.builtin)) return notFound();
     const opts = Object.entries(TYPES).map(([k, v]) => '<option value="' + k + '"' + (e && e.type === k ? " selected" : "") + ">" + esc(v.label) + "</option>").join("");
     const groupOpts = [...new Set(data.exercises.map((x) => x.group))].map((g) => '<option value="' + esc(g) + '">').join("");
-    return (e ? backBtn("open", e.name, e.id) : backBtn("library", "Library")) +
+    return backBtn("back", "Back") +
       "<h2>" + (e ? "Edit exercise" : "Custom exercise") + "</h2>" +
       '<label for="ename">Exercise name</label><input id="ename" placeholder="e.g. Hammer Strength Press" value="' + esc(e ? e.name : "") + '">' +
       '<label for="egroup">Muscle group</label><input id="egroup" list="groups" placeholder="e.g. Chest" value="' + esc(e ? e.group : "") + '"><datalist id="groups">' + groupOpts + "</datalist>" +
@@ -733,7 +946,7 @@ const VIEWS = {
     }
     progress += "</div>";
 
-    return backBtn("home", "Exercises") +
+    return backBtn("back", "Back") +
       '<div class="top"><div><h2>' + esc(e.name) + '</h2><div class="muted">' + esc(e.group) + " · " + esc(e.type) +
       (e.builtin ? "" : ' · <a href="#" data-action="custom" data-id="' + esc(e.id) + '" style="color:#aaa">edit</a>') +
       '</div></div><button class="btn primary" data-action="log" data-id="' + esc(id) + '">+ Log</button></div>' +
@@ -757,7 +970,7 @@ const VIEWS = {
     const last = lastFor(id);
     const base = editing ? editing.sets : last ? last.sets : [{ weight: "", reps: "" }];
     const sets = base.map((z) => ({ weight: z.weight === "" ? "" : toInput(z.weight), kg: z.weight, reps: z.reps }));
-    return backBtn("open", e.name, id) +
+    return backBtn("back", "Back") +
       "<h2>" + (editing ? "Edit workout" : "Log workout") + '</h2><div class="muted">' + (editing ? "" : last ? "Previous workout pre-filled." : "") + "</div>" +
       '<label for="wdate">Date</label><input id="wdate" type="date" max="' + localDate() + '" value="' + esc(editing ? editing.date : localDate()) + '">' +
       '<div class="card"><div class="set" style="margin-top:0"><span></span><small class="muted">Weight (' + unit() + ')</small><small class="muted">Reps</small><span></span></div>' +
@@ -769,7 +982,7 @@ const VIEWS = {
   import() {
     if (!pendingImport) return notFound();
     const p = pendingImport;
-    return backBtn("home", "Cancel") + "<h2>Import backup</h2>" +
+    return backBtn("settings", "Cancel") + "<h2>Import backup</h2>" +
       '<div class="card">Backup contains <b>' + p.sessions.length + "</b> workouts and <b>" + p.exercises.filter((e) => !e.builtin).length + "</b> custom exercises.<br>" +
       'This device has <b>' + data.sessions.length + "</b> workouts.</div>" +
       '<div class="note">Merge keeps everything here and adds what is new from the backup. Replace discards current data. A copy of current data is saved in this browser either way.</div>' +
@@ -794,7 +1007,7 @@ function backBtn(action, label, id = "") {
   return '<button class="btn back" data-action="' + action + '" data-id="' + esc(id) + '">← ' + esc(label) + "</button>";
 }
 function stat(v, label) { return '<div class="stat"><b>' + esc(v) + "</b><span>" + esc(label) + "</span></div>"; }
-function notFound() { return backBtn("home", "Home") + '<div class="card empty">Not found.</div>'; }
+function notFound() { return backBtn("today", "Today") + '<div class="card empty">Not found.</div>'; }
 
 /** z: { weight: display value, kg?: original stored kg (kept if the field is left unchanged), reps } */
 function setRow(z, i) {
@@ -922,13 +1135,18 @@ function renderLibraryList() {
 
 /* ---------- Actions ---------- */
 const ACTIONS = {
-  home: () => go("home"),
+  home: () => go("today"),
+  tab: (t) => { view.tab = t; go(t); },
+  // Return to the previous in-app page; fall back to the current tab after a reload or deep link.
+  back: () => (navDepth > 0 ? history.back() : go(view.tab || "today")),
+  today: () => go("today"),
+  settings: () => go("settings"),
   library: () => go("library"),
   open: (id) => go("exercise", { id }),
   log: (id) => go("log", { id }),
   custom: (id) => go("custom", { id: id || null }),
   filter: (g) => { libFilter = g; go("library"); },
-  history: () => go("history"),
+  history: () => go("activity"),
   reload: () => location.reload(),
   metric: (m) => { chartMetric = m; render(); },
   range: (r) => { chartRange = r; render(); },
@@ -1000,7 +1218,7 @@ const ACTIONS = {
       data.sessions.push({ id: uid("s"), exerciseId: id, date, createdAt: Date.now(), updatedAt: Date.now(), sets, note });
     }
     save();
-    go("exercise", { id });
+    go("exercise", { id }, { replace: true });
   },
 
   "save-custom": (id) => {
@@ -1017,7 +1235,7 @@ const ACTIONS = {
       data.exercises.push(e);
     }
     save();
-    go("exercise", { id: e.id });
+    go("exercise", { id: e.id }, { replace: true });
   },
   "delete-custom": (id) => {
     const e = findExercise(id);
@@ -1215,7 +1433,7 @@ app.addEventListener("click", (ev) => {
 });
 for (const type of ["pointerdown", "pointermove"]) {
   app.addEventListener(type, (ev) => {
-    const svg = ev.target.closest && ev.target.closest("svg.chart");
+    const svg = ev.target.closest && ev.target.closest("svg.chart:not(.bars)");
     if (svg) selectChartPoint(svg, ev.clientX);
   });
 }
@@ -1238,6 +1456,9 @@ window.addEventListener("online", () => scheduleSync(0));
 /* ---------- Boot ---------- */
 data = load();
 save();
+view = viewFromHash(location.hash);
+view.tab = TAB_NAMES.has(view.name) ? view.name : view.name === "exercise" || view.name === "custom" ? "library" : "today";
+history.replaceState(null, "", viewHash(view));
 render();
 
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
