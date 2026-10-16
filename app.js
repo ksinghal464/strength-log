@@ -7,7 +7,7 @@
  */
 const CATALOG = {
   Chest: ["Barbell Bench Press|b", "Incline Barbell Bench Press|b", "Decline Barbell Bench Press|b", "Dumbbell Bench Press|d", "Incline Dumbbell Press|d", "Dumbbell Fly|d", "Cable Crossover|c", "Cable Crossover Low to High|c", "Machine Chest Press|m", "Pec Deck|m", "Push Up|w", "Chest Dip|w"],
-  Back: ["Conventional Deadlift|b", "Sumo Deadlift|b", "Lat Pulldown|c", "Close Grip Lat Pulldown|c", "Pull Up|w", "Chin Up|w", "Assisted Pull Up|m", "Barbell Row|b", "T-Bar Row|b", "Dumbbell Row|d", "Seated Cable Row|c", "Machine Row|m", "Straight Arm Pulldown|c", "Dumbbell Pullover|d"],
+  Back: ["Conventional Deadlift|b", "Sumo Deadlift|b", "Lat Pulldown|c", "Close Grip Lat Pulldown|c", "Pull Up|w", "Chin Up|w", "Assisted Pull Up|m", "Barbell Row|b", "T-Bar Row|b", "Dumbbell Row|d", "Seated Cable Row|c", "Machine Row|m", "Straight Arm Pulldown|c", "Dumbbell Pullover|d", "Chest Supported Dumbbell Row|d", "Dumbbell Shrug|d", "Back Extension|w"],
   Quads: ["Barbell Back Squat|b", "Front Squat|b", "Hack Squat|m", "Leg Press|m", "Leg Extension|m", "Bulgarian Split Squat|d", "Walking Lunge|d", "Dumbbell Lunge|d", "Goblet Squat|d", "Smith Machine Squat|m"],
   Hamstrings: ["Romanian Deadlift|b", "Stiff Leg Deadlift|b", "Good Morning|b", "Glute Ham Raise|w", "Lying Leg Curl|m", "Seated Leg Curl|m"],
   Glutes: ["Barbell Hip Thrust|b", "Machine Hip Thrust|m", "Glute Bridge|b", "Cable Kickback|c", "Cable Pull Through|c", "Step Up|d", "45 Degree Hip Extension|w"],
@@ -30,14 +30,10 @@ const TYPES = {
 };
 const ICONS = { Chest: "🏋️", Back: "🦾", Quads: "🦵", Hamstrings: "🦵", Glutes: "🍑", Shoulders: "💪", Biceps: "💪", Triceps: "💪", Calves: "🦵", Core: "🎯", Forearms: "🤝", "Full Body": "🏋️" };
 const iconFor = (g) => ICONS[g] || "🏋️";
-// Representative exercise whose photo is used for custom exercises in each group.
-const GROUP_IMAGE = { Chest: "Barbell Bench Press", Back: "Barbell Row", Quads: "Barbell Back Squat", Hamstrings: "Romanian Deadlift", Glutes: "Barbell Hip Thrust", Shoulders: "Overhead Press", Biceps: "Barbell Curl", Triceps: "Triceps Pushdown", Calves: "Standing Calf Raise", Core: "Plank", Forearms: "Wrist Curl", "Full Body": "Power Clean" };
 const IMG = typeof IMAGES === "object" ? IMAGES : {};
 function imageKey(e) {
-  if (IMG[e.name]) return IMG[e.name];
-  if (e.builtin) return null;
-  const g = Object.keys(GROUP_IMAGE).find((k) => k.toLowerCase() === String(e.group).toLowerCase());
-  return g ? IMG[GROUP_IMAGE[g]] || null : null;
+  // Custom exercises show their group emoji rather than a borrowed, possibly misleading photo.
+  return IMG[e.name] || null;
 }
 function thumbHTML(e) {
   const k = imageKey(e);
@@ -64,6 +60,9 @@ const BUILTINS = Object.entries(CATALOG).flatMap(([group, list]) =>
   })
 );
 const BUILTIN_BY_NAME = new Map(BUILTINS.map((e) => [e.name.toLowerCase(), e]));
+// Former custom-exercise names that were promoted to built-ins; their workouts move to the built-in.
+const BUILTIN_ALIASES = { "chest supported dumbell row": "Chest Supported Dumbbell Row", shrugs: "Dumbbell Shrug" };
+for (const [alias, name] of Object.entries(BUILTIN_ALIASES)) BUILTIN_BY_NAME.set(alias, BUILTIN_BY_NAME.get(name.toLowerCase()));
 
 /** Reuse an existing group's spelling when only the case differs ("chest" -> "Chest"). */
 function canonGroup(g, existing) {
@@ -72,7 +71,7 @@ function canonGroup(g, existing) {
 }
 
 /* ---------- Storage ---------- */
-const APP_VERSION = "v29"; // keep in sync with VERSION in sw.js; shown in Settings
+const APP_VERSION = "v30"; // keep in sync with VERSION in sw.js; shown in Settings
 const KEY = "strength-log-v3";
 const LEGACY_KEYS = ["strength-log-v2"];
 const SCHEMA = 5; // 5: updatedAt on items + deletion tombstones (for sync)
@@ -1156,7 +1155,7 @@ function mergeData(a, b) {
   const allEx = [...a.exercises, ...b.exercises].filter((e) => !e.builtin);
   // Same name created separately on two devices: keep the lowest id, move workouts to it.
   const remap = new Map();
-  const byName = new Map(BUILTINS.map((x) => [x.name.toLowerCase(), x.id]));
+  const byName = new Map([...BUILTIN_BY_NAME].map(([k, x]) => [k, x.id]));
   const customs = [];
   for (const e of newest(allEx, "exercises").sort((x, y) => (x.id < y.id ? -1 : 1))) {
     const k = e.name.toLowerCase();
