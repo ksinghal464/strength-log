@@ -6,12 +6,12 @@
  * Built-in ids are derived from the name, so reordering is safe.
  */
 const CATALOG = {
-  Chest: ["Barbell Bench Press|b", "Incline Barbell Bench Press|b", "Decline Barbell Bench Press|b", "Dumbbell Bench Press|d", "Incline Dumbbell Press|d", "Dumbbell Fly|d", "Cable Crossover|c", "Cable Crossover Low to High|c", "Machine Chest Press|m", "Pec Deck|m", "Push Up|w", "Chest Dip|w"],
-  Back: ["Conventional Deadlift|b", "Sumo Deadlift|b", "Lat Pulldown|c", "Close Grip Lat Pulldown|c", "Pull Up|w", "Chin Up|w", "Assisted Pull Up|m", "Barbell Row|b", "T-Bar Row|b", "Dumbbell Row|d", "Seated Cable Row|c", "Machine Row|m", "Straight Arm Pulldown|c", "Dumbbell Pullover|d", "Chest Supported Dumbbell Row|d", "Dumbbell Shrug|d", "Back Extension|w"],
+  Chest: ["Barbell Bench Press|b", "Incline Barbell Bench Press|b", "Decline Barbell Bench Press|b", "Dumbbell Bench Press|d", "Incline Dumbbell Press|d", "Decline Dumbbell Press|d", "Dumbbell Fly|d", "Incline Dumbbell Fly|d", "Cable Crossover High to Low|c", "Cable Crossover Low to High|c", "Machine Chest Press|m", "Pec Deck|m", "Push Up|w", "Chest Dip|w"],
+  Back: ["Conventional Deadlift|b", "Sumo Deadlift|b", "Lat Pulldown|c", "Close Grip Lat Pulldown|c", "Pull Up|w", "Chin Up|w", "Assisted Pull Up|m", "Barbell Row|b", "T-Bar Row|b", "Single Arm Dumbbell Row|d", "Seated Cable Row|c", "Single Arm Cable Row|c", "Machine Row|m", "Straight Arm Pulldown|c", "Dumbbell Pullover|d", "Chest Supported Dumbbell Row|d", "Dumbbell Shrug|d", "Back Extension|w"],
   Quads: ["Barbell Back Squat|b", "Front Squat|b", "Hack Squat|m", "Leg Press|m", "Leg Extension|m", "Bulgarian Split Squat|d", "Walking Lunge|d", "Dumbbell Lunge|d", "Goblet Squat|d", "Smith Machine Squat|m"],
   Hamstrings: ["Romanian Deadlift|b", "Stiff Leg Deadlift|b", "Good Morning|b", "Glute Ham Raise|w", "Lying Leg Curl|m", "Seated Leg Curl|m"],
   Glutes: ["Barbell Hip Thrust|b", "Machine Hip Thrust|m", "Glute Bridge|b", "Cable Kickback|c", "Cable Pull Through|c", "Step Up|d", "45 Degree Hip Extension|w"],
-  Shoulders: ["Overhead Press|b", "Push Press|b", "Seated Dumbbell Shoulder Press|d", "Arnold Press|d", "Dumbbell Lateral Raise|d", "Cable Lateral Raise|c", "Front Raise|d", "Rear Delt Fly|d", "Reverse Pec Deck|m", "Face Pull|c", "Upright Row|b"],
+  Shoulders: ["Overhead Press|b", "Push Press|b", "Seated Dumbbell Shoulder Press|d", "Standing Dumbbell Shoulder Press|d", "Behind the Neck Press|b", "Arnold Press|d", "Dumbbell Lateral Raise|d", "Cable Lateral Raise|c", "Front Raise|d", "Rear Delt Fly|d", "Reverse Pec Deck|m", "Face Pull|c", "Upright Row|b"],
   Biceps: ["Barbell Curl|b", "EZ Bar Curl|b", "Dumbbell Curl|d", "Incline Dumbbell Curl|d", "Hammer Curl|d", "Preacher Curl|b", "Cable Curl|c", "Concentration Curl|d", "Machine Curl|m"],
   Triceps: ["Close Grip Bench Press|b", "Triceps Pushdown|c", "Rope Pushdown|c", "Overhead Cable Extension|c", "Dumbbell Overhead Extension|d", "Skull Crusher|b", "Parallel Bar Dip|w", "Bench Dip|w", "Triceps Kickback|d"],
   Calves: ["Standing Calf Raise|m", "Seated Calf Raise|m", "Leg Press Calf Raise|m"],
@@ -61,7 +61,11 @@ const BUILTINS = Object.entries(CATALOG).flatMap(([group, list]) =>
 );
 const BUILTIN_BY_NAME = new Map(BUILTINS.map((e) => [e.name.toLowerCase(), e]));
 // Former custom-exercise names that were promoted to built-ins; their workouts move to the built-in.
-const BUILTIN_ALIASES = { "chest supported dumbell row": "Chest Supported Dumbbell Row", shrugs: "Dumbbell Shrug" };
+// Former names (custom or renamed built-ins); their workouts move to the current built-in.
+const BUILTIN_ALIASES = {
+  "chest supported dumbell row": "Chest Supported Dumbbell Row", shrugs: "Dumbbell Shrug",
+  "dumbbell row": "Single Arm Dumbbell Row", "cable crossover": "Cable Crossover High to Low",
+};
 for (const [alias, name] of Object.entries(BUILTIN_ALIASES)) BUILTIN_BY_NAME.set(alias, BUILTIN_BY_NAME.get(name.toLowerCase()));
 
 /** Reuse an existing group's spelling when only the case differs ("chest" -> "Chest"). */
@@ -71,7 +75,7 @@ function canonGroup(g, existing) {
 }
 
 /* ---------- Storage ---------- */
-const APP_VERSION = "v30"; // keep in sync with VERSION in sw.js; shown in Settings
+const APP_VERSION = "v31"; // keep in sync with VERSION in sw.js; shown in Settings
 const KEY = "strength-log-v3";
 const LEGACY_KEYS = ["strength-log-v2"];
 const SCHEMA = 5; // 5: updatedAt on items + deletion tombstones (for sync)
@@ -189,6 +193,8 @@ function migrate(input) {
     idMap.set(oldId, id);
   }
   for (const b of BUILTINS) idMap.set(b.id, b.id);
+  // Renamed built-ins: sessions may reference the old "b:" id without an exercise entry.
+  for (const [alias, name] of Object.entries(BUILTIN_ALIASES)) if (!idMap.has(builtinId(alias))) idMap.set(builtinId(alias), builtinId(name));
 
   const sessions = [];
   const seenSessionIds = new Set();
